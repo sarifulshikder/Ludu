@@ -1,5 +1,7 @@
 # 🎲 Ludu — Pure Luck Ludo (Android)
 
+[![CI & Android Build](https://github.com/sarifulshikder/Ludu/actions/workflows/ci.yml/badge.svg)](https://github.com/sarifulshikder/Ludu/actions/workflows/ci.yml)
+
 A local **pass-and-play** Ludo game for 2–4 players on one Android device.
 
 **Core guarantee:** Every dice roll uses Dart's `Random.secure()` (cryptographically secure RNG) with **zero** dynamic difficulty adjustment, zero weighting, and zero pity mechanics. A 120,000-roll chi-square test verifies uniform 1–6 distribution.
