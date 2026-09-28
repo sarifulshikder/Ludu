@@ -192,44 +192,50 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
             height: widget.cardHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
             decoration: BoxDecoration(
+              // Neutral surface in both states; identity comes from the accent
+              // stripe and border, not a full-card colour wash.
               gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
                 colors: widget.isDark
-                    ? (widget.isCurrentTurn
-                        ? [
-                            Color.alphaBlend(color.primary.withOpacity(0.34), const Color(0xFF17223C)),
-                            Color.alphaBlend(color.primary.withOpacity(0.14), const Color(0xFF10192B)),
-                          ]
-                        : const [Color(0xFF16203A), Color(0xFF0E1626)])
-                    : (widget.isCurrentTurn
-                        ? [
-                            Color.alphaBlend(color.primary.withOpacity(0.20), Colors.white),
-                            Color.alphaBlend(color.primary.withOpacity(0.07), const Color(0xFFF8F4EC)),
-                          ]
-                        : const [Colors.white, Color(0xFFF3EEE4)]),
+                    ? [
+                        widget.isCurrentTurn
+                            ? Color.alphaBlend(color.primary.withOpacity(0.22), const Color(0xFF1B2740))
+                            : const Color(0xFF16203A),
+                        widget.isCurrentTurn
+                            ? Color.alphaBlend(color.primary.withOpacity(0.10), const Color(0xFF0E1626))
+                            : const Color(0xFF0D1424),
+                      ]
+                    : [
+                        widget.isCurrentTurn
+                            ? Color.alphaBlend(color.primary.withOpacity(0.14), Colors.white)
+                            : Colors.white,
+                        widget.isCurrentTurn
+                            ? Color.alphaBlend(color.primary.withOpacity(0.05), const Color(0xFFFAF6EE))
+                            : const Color(0xFFF6F1E8),
+                      ],
               ),
-              borderRadius: BorderRadius.circular(widget.cardHeight * 0.26),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: widget.isCurrentTurn
-                    ? color.lightGlow.withOpacity(glow)
-                    : (widget.isDark ? const Color(0xFF26334F) : const Color(0xFFDFD7C8)),
-                width: widget.isCurrentTurn ? 2.4 : 1.2,
+                    ? Color.alphaBlend(color.lightGlow, Colors.white).withOpacity(glow)
+                    : (widget.isDark ? const Color(0xFF25324B) : const Color(0xFFE4DCCC)),
+                width: widget.isCurrentTurn ? 2.2 : 1.1,
               ),
               boxShadow: [
                 if (widget.isCurrentTurn)
                   BoxShadow(
-                    color: color.primary.withOpacity(0.45 * glow),
-                    blurRadius: 20,
-                    spreadRadius: 1.5,
-                    offset: const Offset(0, 4),
+                    color: color.primary.withOpacity(0.50 * glow),
+                    blurRadius: 22,
+                    spreadRadius: 0.5,
+                    offset: const Offset(0, 5),
                   )
                 else
                   BoxShadow(
-                    color: Colors.black.withOpacity(widget.isDark ? 0.30 : 0.08),
-                    blurRadius: 8,
+                    color: Colors.black.withOpacity(widget.isDark ? 0.32 : 0.07),
+                    blurRadius: 7,
                     offset: const Offset(0, 3),
                   ),
               ],
@@ -241,74 +247,106 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
                 final availH = constraints.maxHeight;
                 final availW = constraints.maxWidth;
 
-                // Cap the dice by width too, so it can never crowd out the
-                // identity column on a narrow card.
-                final widthCap = availW * 0.44;
-                final diceCap = widthCap < 36.0 ? 36.0 : min(86.0, widthCap);
-                final gap = (availH * 0.06).clamp(4.0, 12.0).toDouble();
-                // The two stacked rows plus the gap must fit the card exactly.
-                final rowSpace = availH - gap;
-                final diceSize = (rowSpace * 0.58).clamp(34.0, diceCap).toDouble();
-                final avatarSize = (rowSpace * 0.40).clamp(28.0, 68.0).toDouble();
-                final dotSize = (diceSize * 0.16).clamp(8.0, 14.0).toDouble();
-                final nameSize = (availH * 0.17).clamp(12.0, 22.0).toDouble();
+                // Sizes are fractions of the real inner box, with the dice
+                // clamped to whatever is left over so the two rows can never
+                // overflow, and the block stays vertically centred so spare
+                // card height reads as padding rather than a void.
+                final gap = (availH * 0.05).clamp(4.0, 10.0).toDouble();
+                final avatarSize = (availH * 0.40).clamp(28.0, 64.0).toDouble();
+                final widthCap = availW * 0.46;
+                final diceMax = min(min(88.0, widthCap < 34.0 ? 34.0 : widthCap), availH - avatarSize - gap);
+                final diceSize = (availH * 0.55).clamp(34.0, diceMax).toDouble();
+                final dotSize = (diceSize * 0.15).clamp(8.0, 13.0).toDouble();
+                final nameSize = (availH * 0.18).clamp(12.0, 24.0).toDouble();
+                final stripe = (availH * 0.10).clamp(5.0, 11.0).toDouble();
 
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                return Row(
                   children: [
-                    Row(
-                      children: [
-                        _buildAvatar(color, isFinished, avatarSize),
-                        SizedBox(width: gap * 1.4),
-                        Expanded(
-                          child: Row(
+                    // Identity stripe
+                    Container(
+                      width: stripe,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(stripe / 2),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [color.lightGlow, color.primary, color.darkShade],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.primary.withOpacity(0.5),
+                            blurRadius: 6,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: gap * 1.5),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
                             children: [
-                              Flexible(
-                                child: Text(
-                                  widget.player.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: nameSize,
-                                    height: 1.1,
-                                    fontWeight: FontWeight.w900,
-                                    color: widget.isDark ? Colors.white : const Color(0xFF0F172A),
-                                  ),
+                              _buildAvatar(color, isFinished, avatarSize),
+                              SizedBox(width: gap * 1.2),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        widget.player.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: nameSize,
+                                          height: 1.1,
+                                          fontWeight: FontWeight.w900,
+                                          color: widget.isDark
+                                              ? Colors.white
+                                              : const Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ),
+                                    if (widget.isCurrentTurn) ...[
+                                      SizedBox(width: gap * 0.8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [color.lightGlow, color.primary],
+                                          ),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'TURN',
+                                          style: TextStyle(
+                                            fontSize: max(8.0, nameSize * 0.46),
+                                            fontWeight: FontWeight.w900,
+                                            color: Colors.white,
+                                            height: 1.1,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
-                              if (widget.isCurrentTurn) ...[
-                                SizedBox(width: gap * 0.7),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [color.lightGlow, color.primary],
-                                    ),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    'TURN',
-                                    style: TextStyle(
-                                      fontSize: max(8.0, nameSize * 0.5),
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      height: 1.1,
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Flexible(child: _buildTokenProgress(color, dotSize)),
-                        _buildDice(color, diceSize),
-                      ],
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Flexible(child: _buildTokenProgress(color, dotSize)),
+                              _buildDice(color, diceSize, glow),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 );
@@ -420,8 +458,9 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
     );
   }
 
-  Widget _buildDice(LudoColor color, double size) {
+  Widget _buildDice(LudoColor color, double size, double glow) {
     final isActive = widget.isCurrentTurn;
+    final rollable = isActive && widget.canRoll;
 
     return AnimatedBuilder(
       animation: _diceRollController,
@@ -443,7 +482,7 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
               width: size,
               height: size,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(size * 0.24),
+                borderRadius: BorderRadius.circular(size * 0.26),
                 gradient: LinearGradient(
                   colors: isActive
                       ? const [Colors.white, Color(0xFFF8FAFC), Color(0xFFDCE3EE)]
@@ -456,68 +495,42 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
                 ),
                 border: Border.all(
                   color: isActive
-                      ? (widget.canRoll ? const Color(0xFFFFD700) : color.primary)
+                      ? (rollable
+                          ? Color.lerp(
+                              color.primary,
+                              const Color(0xFFFFD700),
+                              glow,
+                            )!
+                          : color.primary)
                       : (widget.isDark ? const Color(0xFF55688C) : const Color(0xFF8C99AC)),
-                  width: isActive ? 2.4 : 1.4,
+                  width: isActive ? (rollable ? 2.2 + glow * 1.6 : 2.2) : 1.4,
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: isActive
-                        ? (widget.canRoll
-                            ? const Color(0xFFFFD700).withOpacity(0.55)
-                            : color.primary.withOpacity(0.45))
+                        ? (rollable
+                            ? Color.lerp(
+                                color.primary.withOpacity(0.40),
+                                const Color(0xFFFFD700).withOpacity(0.75),
+                                glow,
+                              )!
+                            : color.primary.withOpacity(0.42))
                         : Colors.black.withOpacity(widget.isDark ? 0.30 : 0.14),
-                    blurRadius: isActive ? size * 0.24 : 5,
+                    blurRadius: isActive ? size * (0.18 + 0.16 * glow) : 5,
+                    spreadRadius: isActive && rollable ? glow * 1.5 : 0,
                     offset: Offset(0, size * 0.06),
                   ),
                 ],
               ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.all(size * 0.18),
-                    child: _renderPips(
-                      _displayDice,
-                      isActive
-                          ? (widget.isDark ? const Color(0xFF0B1220) : const Color(0xFF1E293B))
-                          : (widget.isDark ? const Color(0xFFD3DCEB) : const Color(0xFF5A6879)),
-                      size * 0.17,
-                    ),
-                  ),
-
-                  // Small corner affordance, kept clear of the pips so the face
-                  // stays readable.
-                  if (isActive && widget.canRoll && !isAnimating)
-                    Positioned(
-                      right: -size * 0.02,
-                      bottom: -size * 0.02,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: size * 0.10,
-                          vertical: size * 0.03,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFD700),
-                          borderRadius: BorderRadius.circular(size * 0.10),
-                          border: Border.all(
-                            color: widget.isDark ? const Color(0xFF0B1220) : Colors.white,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Text(
-                          'TAP',
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontSize: max(7.0, size * 0.14),
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.3,
-                            height: 1.1,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+              child: Padding(
+                padding: EdgeInsets.all(size * 0.18),
+                child: _renderPips(
+                  _displayDice,
+                  isActive
+                      ? (widget.isDark ? const Color(0xFF0B1220) : const Color(0xFF1E293B))
+                      : (widget.isDark ? const Color(0xFFD3DCEB) : const Color(0xFF5A6879)),
+                  size * 0.17,
+                ),
               ),
             ),
           ),

@@ -34,7 +34,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   static const double _statusHeight = 56.0;
   static const double _gap = 7.0;
   static const double _minCardHeight = 100.0;
-  static const double _maxCardHeight = 140.0;
+  static const double _maxCardHeight = 186.0;
 
   void _toggleMute() {
     HapticsService.light();

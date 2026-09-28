@@ -186,13 +186,22 @@ class BoardPainter extends CustomPainter {
 
   void _drawTrackTiles(Canvas canvas, double tileSize) {
     final tileBg = Paint()
-      ..color = isDark ? const Color(0xFF162032) : const Color(0xFFF8FAFC)
+      ..color = isDark ? const Color(0xFF1D2A42) : const Color(0xFFFCFAF6)
+      ..style = PaintingStyle.fill;
+
+    final tileBgAlt = Paint()
+      ..color = isDark ? const Color(0xFF182338) : const Color(0xFFF2EEE6)
+      ..style = PaintingStyle.fill;
+
+    // Soft top bevel on every tile gives the track a physical, moulded feel.
+    final tileTopLight = Paint()
+      ..color = isDark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.85)
       ..style = PaintingStyle.fill;
 
     final tileBorder = Paint()
-      ..color = isDark ? const Color(0xFF2B3A55) : const Color(0xFFCBD5E1)
+      ..color = isDark ? const Color(0xFF39496A) : const Color(0xFFD6CFC0)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+      ..strokeWidth = 0.9;
 
     for (int i = 0; i < BoardCoordinates.outerTrack.length; i++) {
       final pt = BoardCoordinates.outerTrack[i];
@@ -212,18 +221,46 @@ class BoardPainter extends CustomPainter {
       if (i == LudoColor.blue.startSquare) startColor = LudoColor.blue;
 
       if (startColor != null) {
+        // Start squares get the player's colour with a lit top edge.
         final startPaint = Paint()
-          ..color = startColor.primary.withOpacity(isDark ? 0.65 : 0.50)
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              startColor.lightGlow.withOpacity(isDark ? 0.85 : 0.70),
+              startColor.primary.withOpacity(isDark ? 0.80 : 0.62),
+            ],
+          ).createShader(rect)
           ..style = PaintingStyle.fill;
         canvas.drawRRect(rrect, startPaint);
 
-        final startBorder = Paint()
-          ..color = startColor.lightGlow
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0;
-        canvas.drawRRect(rrect, startBorder);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.45),
+            const Radius.circular(5),
+          ),
+          Paint()
+            ..color = Colors.white.withOpacity(0.16)
+            ..style = PaintingStyle.fill,
+        );
+
+        canvas.drawRRect(
+          rrect,
+          Paint()
+            ..color = startColor.lightGlow
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.8,
+        );
       } else {
-        canvas.drawRRect(rrect, tileBg);
+        // Alternating tone breaks up the long track and aids legibility.
+        canvas.drawRRect(rrect, i.isEven ? tileBg : tileBgAlt);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.42),
+            const Radius.circular(5),
+          ),
+          tileTopLight,
+        );
         canvas.drawRRect(rrect, tileBorder);
       }
     }
