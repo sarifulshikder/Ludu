@@ -1,0 +1,409 @@
+import 'package:flutter/material.dart';
+import '../../models/ludo_color.dart';
+import '../../services/haptics_service.dart';
+
+class SetupScreen extends StatefulWidget {
+  final Function({
+    required int playerCount,
+    required List<String> playerNames,
+    required List<LudoColor> playerColors,
+  }) onStartGame;
+  final VoidCallback onToggleTheme;
+  final bool isDark;
+
+  const SetupScreen({
+    super.key,
+    required this.onStartGame,
+    required this.onToggleTheme,
+    required this.isDark,
+  });
+
+  @override
+  State<SetupScreen> createState() => _SetupScreenState();
+}
+
+class _SetupScreenState extends State<SetupScreen> {
+  int _playerCount = 4;
+  late List<TextEditingController> _nameControllers;
+
+  final List<LudoColor> _allColors = [
+    LudoColor.red,
+    LudoColor.green,
+    LudoColor.yellow,
+    LudoColor.blue,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _initControllers();
+  }
+
+  void _initControllers() {
+    _nameControllers = List.generate(
+      4,
+      (i) => TextEditingController(text: 'Player ${i + 1}'),
+    );
+  }
+
+  @override
+  void dispose() {
+    for (final c in _nameControllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _showRulesDialog() {
+    HapticsService.light();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Text('🎲 ', style: TextStyle(fontSize: 22)),
+              Text(
+                'Ludu Rules',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          content: const SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _RuleItem(
+                  title: 'Pure Luck Guarantee',
+                  desc: 'Every roll uses cryptographically secure Random.secure(). Zero DDA, zero weighting, zero pity mechanics.',
+                ),
+                _RuleItem(
+                  title: 'Exit Base',
+                  desc: 'Roll a 6 to bring a token out of base and grant an extra turn.',
+                ),
+                _RuleItem(
+                  title: 'Captures & Safe Stars',
+                  desc: 'Landing on an opponent sends them back to base. Tokens on the 8 star/entry squares are safe from capture.',
+                ),
+                _RuleItem(
+                  title: 'Three 6s Rule',
+                  desc: 'Rolling three 6s in a row within the same turn forfeits the turn and passes it immediately to the next player.',
+                ),
+                _RuleItem(
+                  title: 'Exact Roll to Finish',
+                  desc: 'Tokens require an exact roll to land on Home. No overshoots allowed.',
+                ),
+                _RuleItem(
+                  title: 'Complete Ranking',
+                  desc: 'Game continues until all players complete their tokens, determining 1st through last place.',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Got It',
+                style: TextStyle(
+                  color: Color(0xFFE9C46A),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Default colors based on player count
+    final List<LudoColor> activeColors = (_playerCount == 2)
+        ? [LudoColor.red, LudoColor.yellow]
+        : _allColors.sublist(0, _playerCount);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('LUDU'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline_rounded),
+            tooltip: 'Rules',
+            onPressed: _showRulesDialog,
+          ),
+          IconButton(
+            icon: Icon(widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
+            tooltip: 'Toggle Theme',
+            onPressed: widget.onToggleTheme,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header Logo / Slogan
+              Center(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFE63946),
+                            Color(0xFF2A9D8F),
+                            Color(0xFFE9C46A),
+                            Color(0xFF277DA1),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFE9C46A).withOpacity(0.35),
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          '🎲',
+                          style: TextStyle(fontSize: 42),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Ludu',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Pure Luck • Local Pass & Play',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // Player Count Selection
+              const Text(
+                'NUMBER OF PLAYERS',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                  color: Color(0xFFE9C46A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [2, 3, 4].map((count) {
+                  final isSelected = _playerCount == count;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: InkWell(
+                        onTap: () {
+                          HapticsService.selection();
+                          setState(() {
+                            _playerCount = count;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFE9C46A)
+                                : (widget.isDark ? const Color(0xFF141D2E) : Colors.white),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFFE9C46A)
+                                  : (widget.isDark ? const Color(0xFF283650) : const Color(0xFFD6CEBD)),
+                              width: isSelected ? 2.0 : 1.0,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$count Players',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: isSelected
+                                    ? const Color(0xFF1A202C)
+                                    : (widget.isDark ? Colors.white : const Color(0xFF1A202C)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 24),
+
+              // Player Name Inputs & Colors
+              const Text(
+                'PLAYERS & SEATS',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                  color: Color(0xFFE9C46A),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _playerCount,
+                separatorBuilder: (context, index) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final color = activeColors[index];
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: color.primary.withOpacity(0.6),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        // Color Pill
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: color.jewelGradient,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+
+                        // Name Text Field
+                        Expanded(
+                          child: TextField(
+                            controller: _nameControllers[index],
+                            maxLength: 16,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            decoration: InputDecoration(
+                              counterText: '',
+                              border: InputBorder.none,
+                              labelText: '${color.displayName} Player',
+                              labelStyle: TextStyle(
+                                color: color.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 32),
+
+              // Start Game Button
+              ElevatedButton(
+                onPressed: () {
+                  HapticsService.medium();
+                  final names = List.generate(
+                    _playerCount,
+                    (i) => _nameControllers[i].text.trim().isEmpty
+                        ? 'Player ${i + 1}'
+                        : _nameControllers[i].text.trim(),
+                  );
+                  widget.onStartGame(
+                    playerCount: _playerCount,
+                    playerNames: names,
+                    playerColors: activeColors,
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE9C46A),
+                  foregroundColor: const Color(0xFF131824),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 6,
+                  shadowColor: const Color(0xFFE9C46A).withOpacity(0.4),
+                ),
+                child: const Text(
+                  'START GAME',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RuleItem extends StatelessWidget {
+  final String title;
+  final String desc;
+
+  const _RuleItem({required this.title, required this.desc});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              color: Color(0xFFE9C46A),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            desc,
+            style: const TextStyle(fontSize: 13, height: 1.3),
+          ),
+        ],
+      ),
+    );
+  }
+}
