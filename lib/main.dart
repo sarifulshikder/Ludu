@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/ludu_theme.dart';
 import 'models/ludo_color.dart';
+import 'services/audio_service.dart';
 import 'state/game_controller.dart';
 import 'ui/screens/game_screen.dart';
 import 'ui/screens/setup_screen.dart';
@@ -15,6 +16,10 @@ void main() {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // Warm up the audio backend before the first dice roll so no effect is
+  // swallowed while players are still being prepared.
+  AudioService.init();
 
   runApp(const LuduApp());
 }

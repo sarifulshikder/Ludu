@@ -5,6 +5,7 @@ import '../../core/board_coordinates.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
 import '../../models/token.dart';
+import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 import 'board_painter.dart';
 import 'token_widget.dart';
@@ -12,11 +13,13 @@ import 'token_widget.dart';
 class LudoBoard extends StatefulWidget {
   final GameState gameState;
   final Function(int tokenId) onTokenSelected;
+  final VoidCallback? onRollDice;
 
   const LudoBoard({
     super.key,
     required this.gameState,
     required this.onTokenSelected,
+    this.onRollDice,
   });
 
   @override
@@ -24,8 +27,7 @@ class LudoBoard extends StatefulWidget {
 }
 
 class _LudoBoardState extends State<LudoBoard> {
-  // Tracking animated token movement step-by-step
-  int? _animatingTokenKey; // hash of player color & token id
+  int? _animatingTokenKey;
   int? _animatingCurrentStep;
   Timer? _hopTimer;
 
@@ -42,9 +44,10 @@ class _LudoBoardState extends State<LudoBoard> {
     });
 
     if (startStep == -1) {
-      // Direct hop from base to entry tile
+      // Direct hop from base to track entry tile
       _hopTimer?.cancel();
-      _hopTimer = Timer(const Duration(milliseconds: 260), () {
+      AudioService.playTokenOut();
+      _hopTimer = Timer(const Duration(milliseconds: 240), () {
         HapticsService.medium();
         setState(() {
           _animatingTokenKey = null;
@@ -57,7 +60,7 @@ class _LudoBoardState extends State<LudoBoard> {
 
     // Step-by-step sequential hops
     int currentStep = startStep;
-    const int stepDurationMs = 110;
+    const int stepDurationMs = 100;
 
     _hopTimer?.cancel();
     _hopTimer = Timer.periodic(const Duration(milliseconds: stepDurationMs), (timer) {
@@ -68,6 +71,7 @@ class _LudoBoardState extends State<LudoBoard> {
 
       currentStep++;
       HapticsService.light();
+      AudioService.playTokenStep();
 
       if (currentStep >= finalStep) {
         timer.cancel();
@@ -76,7 +80,7 @@ class _LudoBoardState extends State<LudoBoard> {
         });
 
         // Small pause at landing tile then commit move
-        Future.delayed(const Duration(milliseconds: 140), () {
+        Future.delayed(const Duration(milliseconds: 120), () {
           if (!mounted) return;
           setState(() {
             _animatingTokenKey = null;
@@ -98,6 +102,13 @@ class _LudoBoardState extends State<LudoBoard> {
     super.dispose();
   }
 
+  void _handleBaseTap(LudoColor color) {
+    if (widget.gameState.canRollDice &&
+        widget.gameState.currentPlayer.color == color) {
+      widget.onRollDice?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -106,18 +117,22 @@ class _LudoBoardState extends State<LudoBoard> {
       builder: (context, constraints) {
         final double boardDimension = min(constraints.maxWidth, constraints.maxHeight);
         final double tileSize = boardDimension / 15.0;
-        final double tokenSize = tileSize * 0.78;
+        // Pieces are deliberately chunky: they fill their tile on the track and
+        // spill slightly into the yard in the home bases.
+        final double trackTokenSize = tileSize * 1.02;
+        final double baseTokenSize = tileSize * 1.30;
 
         return Center(
           child: Container(
             width: boardDimension,
             height: boardDimension,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.35),
-                  blurRadius: 18,
+                  color: Colors.black.withOpacity(0.40),
+                  blurRadius: 20,
+                  spreadRadius: 2,
                   offset: const Offset(0, 8),
                 ),
               ],
@@ -131,8 +146,56 @@ class _LudoBoardState extends State<LudoBoard> {
                   ),
                 ),
 
+                // Interactive tap detection over the 4 corner bases to roll dice
+                if (widget.gameState.canRollDice) ...[
+                  // Top-Left (Red)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    width: tileSize * 6,
+                    height: tileSize * 6,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => _handleBaseTap(LudoColor.red),
+                    ),
+                  ),
+                  // Top-Right (Green)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    width: tileSize * 6,
+                    height: tileSize * 6,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => _handleBaseTap(LudoColor.green),
+                    ),
+                  ),
+                  // Bottom-Right (Yellow)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    width: tileSize * 6,
+                    height: tileSize * 6,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => _handleBaseTap(LudoColor.yellow),
+                    ),
+                  ),
+                  // Bottom-Left (Blue)
+                  Positioned(
+                    left: 0,
+                    bottom: 0,
+                    width: tileSize * 6,
+                    height: tileSize * 6,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => _handleBaseTap(LudoColor.blue),
+                    ),
+                  ),
+                ],
+
                 // Tokens layer
-                ..._buildAllTokens(boardDimension, tileSize, tokenSize),
+                ..._buildAllTokens(boardDimension, tileSize, trackTokenSize, baseTokenSize),
               ],
             ),
           ),
@@ -141,10 +204,15 @@ class _LudoBoardState extends State<LudoBoard> {
     );
   }
 
-  List<Widget> _buildAllTokens(double boardDimension, double tileSize, double tokenSize) {
+  List<Widget> _buildAllTokens(
+    double boardDimension,
+    double tileSize,
+    double trackTokenSize,
+    double baseTokenSize,
+  ) {
     final List<Widget> tokenWidgets = [];
 
-    // Group tokens by their rendered coordinate key to calculate offsets for stacked tokens
+    // Group tokens by their rendered coordinate key
     final Map<String, List<Map<String, dynamic>>> positionBuckets = {};
 
     for (int pIdx = 0; pIdx < widget.gameState.players.length; pIdx++) {
@@ -178,7 +246,7 @@ class _LudoBoardState extends State<LudoBoard> {
       }
     }
 
-    // Render tokens with offsets when clustered
+    // Render tokens with offsets when multiple tokens occupy the same square
     for (final bucket in positionBuckets.values) {
       final count = bucket.length;
 
@@ -189,26 +257,28 @@ class _LudoBoardState extends State<LudoBoard> {
         final bool isMovable = item['isMovable'];
         final bool isAnimating = item['isAnimating'];
 
+        final double currentTokenSize = token.isInBase ? baseTokenSize : trackTokenSize;
+
         Offset offset = Offset.zero;
         if (count > 1 && !token.isInBase) {
           final angle = (2 * pi / count) * i;
-          final radius = tileSize * 0.18;
+          final radius = tileSize * 0.20;
           offset = Offset(cos(angle) * radius, sin(angle) * radius);
         }
 
-        final targetLeft = pt.col * tileSize + (tileSize - tokenSize) / 2 + offset.dx;
-        final targetTop = pt.row * tileSize + (tileSize - tokenSize) / 2 + offset.dy;
+        final targetLeft = pt.col * tileSize + (tileSize - currentTokenSize) / 2 + offset.dx;
+        final targetTop = pt.row * tileSize + (tileSize - currentTokenSize) / 2 + offset.dy;
 
         tokenWidgets.add(
           AnimatedPositioned(
             key: ValueKey('token_${token.color.name}_${token.id}'),
-            duration: isAnimating ? const Duration(milliseconds: 90) : const Duration(milliseconds: 220),
+            duration: isAnimating ? const Duration(milliseconds: 90) : const Duration(milliseconds: 200),
             curve: isAnimating ? Curves.easeOutQuad : Curves.easeInOut,
             left: targetLeft,
             top: targetTop,
             child: TokenWidget(
               token: token,
-              size: tokenSize,
+              size: currentTokenSize,
               isMovable: isMovable,
               onTap: () {
                 if (_animatingTokenKey != null) return;

@@ -4,6 +4,7 @@ import '../models/game_state.dart';
 import '../models/ludo_color.dart';
 import '../models/player.dart';
 import '../models/token.dart';
+import '../services/audio_service.dart';
 import '../services/dice_service.dart';
 
 final diceServiceProvider = Provider<DiceService>((ref) => DiceService());
@@ -79,7 +80,11 @@ class GameController extends StateNotifier<GameState> {
   int rollDice() {
     if (!state.canRollDice) return state.currentDiceRoll ?? 1;
 
+    AudioService.playDiceRoll();
     final roll = _diceService.roll();
+    if (roll == 6) {
+      AudioService.playSix();
+    }
     final player = state.currentPlayer;
     int newConsecutiveSixes = (roll == 6) ? state.consecutiveSixes + 1 : 0;
     int totalSixes = state.totalSixes + (roll == 6 ? 1 : 0);
@@ -212,6 +217,7 @@ class GameController extends StateNotifier<GameState> {
           }
 
           if (opponentCaptured) {
+            AudioService.playCapture();
             updatedPlayers[p] = opponent.copyWith(tokens: opponentTokens);
             status = '⚔️ ${player.name} captured ${opponent.name}\'s token!';
           }
@@ -221,6 +227,7 @@ class GameController extends StateNotifier<GameState> {
 
     // Check if token reached Home
     if (newStep == 56) {
+      AudioService.playSafe();
       status = '🎉 ${player.name}\'s token reached Home!';
     }
 
@@ -241,6 +248,7 @@ class GameController extends StateNotifier<GameState> {
     bool isOver = false;
     if (remainingActive.length <= 1) {
       isOver = true;
+      AudioService.playVictory();
       if (remainingActive.length == 1) {
         final lastPlayer = remainingActive.first;
         final lastRank = newFinishOrder.length + 1;

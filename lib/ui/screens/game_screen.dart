@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
+import '../../models/player.dart';
+import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 import '../../state/game_controller.dart';
 import '../board/ludo_board.dart';
-import '../widgets/dice_widget.dart';
-import '../widgets/turn_indicator_banner.dart';
+import '../widgets/player_box_widget.dart';
 import 'victory_screen.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
@@ -26,6 +27,23 @@ class GameScreen extends ConsumerStatefulWidget {
 }
 
 class _GameScreenState extends ConsumerState<GameScreen> {
+  bool _isMuted = AudioService.isMuted;
+
+  // Layout constants for the adaptive, edge-to-edge play area.
+  static const double _topBarHeight = 48.0;
+  static const double _statusHeight = 56.0;
+  static const double _gap = 7.0;
+  static const double _minCardHeight = 100.0;
+  static const double _maxCardHeight = 140.0;
+
+  void _toggleMute() {
+    HapticsService.light();
+    setState(() {
+      AudioService.toggleMute();
+      _isMuted = AudioService.isMuted;
+    });
+  }
+
   void _confirmRestart() {
     HapticsService.light();
     showDialog(
@@ -85,12 +103,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
+  Player? _getPlayer(GameState state, LudoColor color) {
+    final idx = state.players.indexWhere((p) => p.color == color);
+    return (idx != -1) ? state.players[idx] : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameControllerProvider);
     final controller = ref.read(gameControllerProvider.notifier);
 
-    // If game is finished, present Victory screen
+    // If game is finished, show Victory screen
     if (gameState.phase == GamePhase.finished) {
       return VictoryScreen(
         gameState: gameState,
@@ -109,144 +132,291 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final currentPlayer = gameState.currentPlayer;
     final activeColor = currentPlayer.color;
 
+    final redPlayer = _getPlayer(gameState, LudoColor.red);
+    final greenPlayer = _getPlayer(gameState, LudoColor.green);
+    final yellowPlayer = _getPlayer(gameState, LudoColor.yellow);
+    final bluePlayer = _getPlayer(gameState, LudoColor.blue);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('LUDU'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Exit to Setup',
-          onPressed: _confirmExit,
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Restart Match',
-            onPressed: _confirmRestart,
-          ),
-          IconButton(
-            icon: Icon(widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
-            tooltip: 'Toggle Theme',
-            onPressed: widget.onToggleTheme,
-          ),
-        ],
+      backgroundColor: widget.isDark ? const Color(0xFF070B14) : const Color(0xFFEDE7DC),
+      body: _buildBackdrop(
+        gameState: gameState,
+        controller: controller,
+        activeColor: activeColor,
+        redPlayer: redPlayer,
+        greenPlayer: greenPlayer,
+        yellowPlayer: yellowPlayer,
+        bluePlayer: bluePlayer,
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Column(
-            children: [
-              // Top Turn Indicator Banner
-              TurnIndicatorBanner(gameState: gameState),
-              const SizedBox(height: 12),
+    );
+  }
 
-              // Responsive Ludo Board
-              Expanded(
-                child: LudoBoard(
+  /// Rich ambient background so the board and cards sit on something premium
+  /// instead of a flat colour.
+  Widget _buildBackdrop({
+    required GameState gameState,
+    required GameController controller,
+    required LudoColor activeColor,
+    required Player? redPlayer,
+    required Player? greenPlayer,
+    required Player? yellowPlayer,
+    required Player? bluePlayer,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: widget.isDark
+              ? const [Color(0xFF0C1424), Color(0xFF070B14), Color(0xFF0B1220)]
+              : const [Color(0xFFF6F1E8), Color(0xFFEDE7DC), Color(0xFFF3EDE3)],
+        ),
+      ),
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final cardHeight = _computeCardHeight(constraints);
+
+            return Column(
+              children: [
+                SizedBox(height: _topBarHeight, child: _buildTopBar()),
+                const SizedBox(height: _gap),
+                _buildPlayerRow(
                   gameState: gameState,
-                  onTokenSelected: (tokenId) {
-                    controller.moveToken(tokenId);
-                  },
+                  controller: controller,
+                  left: redPlayer,
+                  right: greenPlayer,
+                  cardHeight: cardHeight,
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: _gap),
 
-              // Bottom Dice & Action Controls
-              _buildBottomControls(gameState, controller, activeColor),
-            ],
-          ),
+                // The board takes every remaining pixel and is free to grow
+                // up to the full screen width.
+                Expanded(
+                  child: LudoBoard(
+                    gameState: gameState,
+                    onTokenSelected: (tokenId) => controller.moveToken(tokenId),
+                    onRollDice: () => controller.rollDice(),
+                  ),
+                ),
+
+                const SizedBox(height: _gap),
+                SizedBox(
+                  height: _statusHeight,
+                  child: _buildStatusBanner(gameState, activeColor, controller),
+                ),
+                const SizedBox(height: _gap),
+                _buildPlayerRow(
+                  gameState: gameState,
+                  controller: controller,
+                  left: bluePlayer,
+                  right: yellowPlayer,
+                  cardHeight: cardHeight,
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildBottomControls(
+  /// Spends whatever vertical space is left over on making the player cards
+  /// taller, so the board stays full-width while the cards grow.
+  double _computeCardHeight(BoxConstraints constraints) {
+    final fixed = _topBarHeight + _statusHeight + (_gap * 4);
+    final slack = constraints.maxHeight - fixed - constraints.maxWidth;
+    return (slack / 2).clamp(_minCardHeight, _maxCardHeight).toDouble();
+  }
+
+  Widget _buildPlayerRow({
+    required GameState gameState,
+    required GameController controller,
+    required Player? left,
+    required Player? right,
+    required double cardHeight,
+  }) {
+    Widget buildCard(Player? player) {
+      if (player == null) return const SizedBox.shrink();
+      final isTurn = gameState.currentPlayer.color == player.color;
+      return PlayerBoxWidget(
+        key: ValueKey('card_${player.color.name}'),
+        player: player,
+        cardHeight: cardHeight,
+        isCurrentTurn: isTurn,
+        canRoll: isTurn && gameState.canRollDice,
+        mustSelectToken: isTurn && gameState.mustSelectToken,
+        showDiceRoll: isTurn ? gameState.currentDiceRoll : null,
+        isRolling: gameState.isRolling,
+        onRoll: () => controller.rollDice(),
+        onAutoMoveSingle: (gameState.mustSelectToken && gameState.movableTokenIds.length == 1)
+            ? () => controller.moveToken(gameState.movableTokenIds.first)
+            : null,
+        isDark: widget.isDark,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Row(
+        children: [
+          Expanded(child: buildCard(left)),
+          const SizedBox(width: _gap),
+          Expanded(child: buildCard(right)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    final fg = widget.isDark ? Colors.white : const Color(0xFF0F172A);
+
+    Widget roundButton(IconData icon, String tooltip, VoidCallback onTap) {
+      return Tooltip(
+        message: tooltip,
+        child: Material(
+          color: widget.isDark
+              ? Colors.white.withOpacity(0.07)
+              : Colors.white.withOpacity(0.75),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(icon, size: 21, color: fg),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Row(
+        children: [
+          roundButton(Icons.arrow_back_ios_new_rounded, 'Exit to Setup', _confirmExit),
+          const SizedBox(width: 10),
+          const Text(
+            'LUDU',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 3.0,
+              height: 1.0,
+            ),
+          ),
+          const Spacer(),
+          roundButton(
+            _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            _isMuted ? 'Unmute Sound' : 'Mute Sound',
+            _toggleMute,
+          ),
+          const SizedBox(width: 6),
+          roundButton(
+            widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+            'Toggle Theme',
+            widget.onToggleTheme,
+          ),
+          const SizedBox(width: 6),
+          roundButton(Icons.refresh_rounded, 'Restart Match', _confirmRestart),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBanner(
     GameState gameState,
-    GameController controller,
     LudoColor activeColor,
+    GameController controller,
   ) {
     final canRoll = gameState.canRollDice;
     final mustSelectToken = gameState.mustSelectToken;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: widget.isDark ? const Color(0xFF141C2E) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: widget.isDark ? const Color(0xFF283650) : const Color(0xFFE2DDD2),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.18),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Instructions & Status
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  canRoll
-                      ? 'TAP DICE TO ROLL'
-                      : (mustSelectToken ? 'SELECT TOKEN TO MOVE' : 'WAITING...'),
-                  style: TextStyle(
-                    color: canRoll ? activeColor.lightGlow : (widget.isDark ? Colors.white70 : Colors.black87),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  canRoll
-                      ? 'Pure Random.secure() dice roll'
-                      : (mustSelectToken
-                          ? (gameState.movableTokenIds.length == 1
-                              ? 'Tap token #${gameState.movableTokenIds.first + 1} or tap dice to move'
-                              : 'Tap one of the highlighted tokens')
-                          : gameState.statusMessage),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
+    final String bannerText;
+    if (canRoll) {
+      bannerText = 'TAP DICE TO ROLL';
+    } else if (mustSelectToken) {
+      bannerText = gameState.movableTokenIds.length == 1
+          ? 'SELECT TOKEN TO MOVE (or tap dice)'
+          : 'SELECT TOKEN TO MOVE';
+    } else {
+      bannerText = gameState.statusMessage;
+    }
 
-          // 3D Animated Tumbling Dice
-          GestureDetector(
-            onTap: () {
-              if (canRoll) {
-                controller.rollDice();
-              } else if (mustSelectToken && gameState.movableTokenIds.length == 1) {
-                // Quick tap on dice to auto-execute single valid move
-                controller.moveToken(gameState.movableTokenIds.first);
-              }
-            },
-            child: DiceWidget(
-              value: gameState.currentDiceRoll,
-              isRolling: gameState.isRolling,
-              canRoll: canRoll,
-              activeColor: activeColor,
-              onRoll: () {
-                controller.rollDice();
-              },
-            ),
+    final isInteractive = canRoll || (mustSelectToken && gameState.movableTokenIds.length == 1);
+
+    return GestureDetector(
+      onTap: () {
+        if (canRoll) {
+          controller.rollDice();
+        } else if (mustSelectToken && gameState.movableTokenIds.length == 1) {
+          controller.moveToken(gameState.movableTokenIds.first);
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color.alphaBlend(
+                activeColor.primary.withOpacity(widget.isDark ? 0.30 : 0.18),
+                widget.isDark ? const Color(0xFF16203A) : Colors.white,
+              ),
+              Color.alphaBlend(
+                activeColor.primary.withOpacity(widget.isDark ? 0.16 : 0.08),
+                widget.isDark ? const Color(0xFF111A2E) : const Color(0xFFFDFDFB),
+              ),
+            ],
           ),
-        ],
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: activeColor.lightGlow.withOpacity(isInteractive ? 0.85 : 0.35),
+            width: isInteractive ? 1.8 : 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: activeColor.primary.withOpacity(widget.isDark ? 0.32 : 0.18),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: activeColor.lightGlow,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: activeColor.lightGlow.withOpacity(0.8), blurRadius: 8),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                bannerText,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: widget.isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontSize: 14,
+                  height: 1.15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
