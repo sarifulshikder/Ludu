@@ -22,7 +22,7 @@ void main() {
     await tester.tap(find.text('START GAME'));
     await tester.pumpAndSettle();
 
-    // Verify GameScreen is now displayed with turn dock and dice controls
-    expect(find.textContaining('TAP TO ROLL'), findsOneWidget);
+    // Verify GameScreen is now displayed with hint text and center dice
+    expect(find.textContaining('TAP THE DICE'), findsOneWidget);
   });
 }

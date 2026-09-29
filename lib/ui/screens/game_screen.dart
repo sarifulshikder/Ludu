@@ -12,9 +12,10 @@ import '../board/token_widget.dart';
 import '../widgets/dice_widget.dart';
 import 'victory_screen.dart';
 
-/// Full-board game screen: no side boxes, the 15×15 grid takes the whole
-/// play area. A slim top bar, one floating grand dice docked at the active
-/// player's corner, and a compact turn dock at the bottom.
+/// Full edge-to-edge board: the 15×15 grid spans the full screen width,
+/// each player's box keeps its 4 tokens centered in the middle, and one
+/// grand dice sits in the board's center as the single roll control.
+/// No bottom roll box — tap the dice to roll.
 class GameScreen extends ConsumerStatefulWidget {
   final VoidCallback onNewGame;
   final VoidCallback onToggleTheme;
@@ -37,9 +38,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   bool _boardAnimating = false;
 
   static const double _topBarHeight = 44.0;
-  static const double _dockHeight = 76.0;
   static const double _gap = 6.0;
-  static const double _boardMargin = 4.0;
 
   void _toggleMute() {
     HapticsService.light();
@@ -184,34 +183,38 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               children: [
                 SizedBox(height: _topBarHeight, child: _buildTopBar(gameState)),
                 const SizedBox(height: _gap),
+                // Edge-to-edge: no horizontal padding, the board spans the
+                // full screen width. Leftover vertical space stays backdrop.
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: _boardMargin),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned.fill(
-                          child: LudoBoard(
-                            gameState: gameState,
-                            onTokenSelected: (tokenId) =>
-                                controller.moveToken(tokenId),
-                            onRollDice: () => controller.rollDice(),
-                            onAnimatingChanged: (v) =>
-                                setState(() => _boardAnimating = v),
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: 1.0,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Positioned.fill(
+                            child: LudoBoard(
+                              gameState: gameState,
+                              onTokenSelected: (tokenId) =>
+                                  controller.moveToken(tokenId),
+                              onRollDice: () => controller.rollDice(),
+                              onAnimatingChanged: (v) =>
+                                  setState(() => _boardAnimating = v),
+                            ),
                           ),
-                        ),
-                        _buildCornerDice(gameState, controller, activeColor),
-                      ],
+                          _buildCenterDice(
+                              gameState, controller, activeColor),
+                        ],
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: _gap),
+                // Plain hint text only — not a box, not tappable.
+                // The center dice is the single roll control.
                 SizedBox(
-                  height: _dockHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: _buildTurnDock(gameState, controller, activeColor),
-                  ),
+                  height: 24,
+                  child: Center(child: _buildStatusText(gameState)),
                 ),
                 const SizedBox(height: 4),
               ],
@@ -222,52 +225,54 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  /// Grand dice floating over the active player's corner of the board.
-  /// Red = top-left, Green = top-right, Yellow = bottom-right,
-  /// Blue = bottom-left.
-  Widget _buildCornerDice(
+  /// Grand dice in the middle of the board — the single roll control.
+  /// Glows in the active player's color; tap it to roll (or to confirm a
+  /// forced single move). The 4 tokens stay centered in each player's box.
+  Widget _buildCenterDice(
     GameState gameState,
     GameController controller,
     LudoColor activeColor,
   ) {
-    double? left;
-    double? top;
-    double? right;
-    double? bottom;
-    switch (activeColor) {
-      case LudoColor.red:
-        left = 4;
-        top = 4;
-        break;
-      case LudoColor.green:
-        right = 4;
-        top = 4;
-        break;
-      case LudoColor.yellow:
-        right = 4;
-        bottom = 4;
-        break;
-      case LudoColor.blue:
-        left = 4;
-        bottom = 4;
-        break;
-    }
     final idleFace = (gameState.currentPlayerIndex + 1).clamp(1, 6);
     final singleMovable = gameState.mustSelectToken &&
         gameState.movableTokenIds.length == 1;
-    return Positioned(
-      left: left,
-      top: top,
-      right: right,
-      bottom: bottom,
-      child: DiceWidget(
-        value: gameState.currentDiceRoll ?? idleFace,
-        isRolling: gameState.isRolling,
-        canRoll:
-            (gameState.canRollDice || singleMovable) && !_boardAnimating,
-        activeColor: activeColor,
-        size: 96,
-        onRoll: () => _primaryAction(gameState, controller),
+    return Positioned.fill(
+      child: Center(
+        child: DiceWidget(
+          value: gameState.currentDiceRoll ?? idleFace,
+          isRolling: gameState.isRolling,
+          canRoll:
+              (gameState.canRollDice || singleMovable) && !_boardAnimating,
+          activeColor: activeColor,
+          size: 88,
+          onRoll: () => _primaryAction(gameState, controller),
+        ),
+      ),
+    );
+  }
+
+  /// Plain hint line under the board — text only, no box, not tappable.
+  Widget _buildStatusText(GameState gameState) {
+    final me = gameState.currentPlayer;
+    final String text;
+    if (_boardAnimating || gameState.isMovingToken) {
+      text = 'MOVING…';
+    } else if (gameState.canRollDice) {
+      text = 'TAP THE DICE TO ROLL';
+    } else if (gameState.mustSelectToken) {
+      text = gameState.movableTokenIds.length == 1
+          ? 'TAP THE DICE TO MOVE'
+          : 'TAP A GLOWING ${me.color.emblemGlyph} TO MOVE';
+    } else {
+      text = '';
+    }
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.2,
+        color: widget.isDark ? Colors.white70 : const Color(0xFF475569),
       ),
     );
   }
@@ -296,8 +301,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       );
     }
 
-    // Narrow phones can't fit the mode chip next to 4 action buttons —
-    // the turn dock already shows the mode, so hide the chip there.
+    // The bottom roll box is gone, so the top bar carries the turn chip:
+    // active orb avatar + name (+ team). Mode chip only fits wide screens.
+    final me = gameState.currentPlayer;
+    final turnLabel = gameState.teamMode
+        ? '${me.name} • ${Player.teamName(me.teamId)}'
+        : me.name;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: LayoutBuilder(
@@ -316,6 +325,51 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   fontWeight: FontWeight.w900,
                   letterSpacing: 2.0,
                   height: 1.0,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: me.color.primary.withOpacity(
+                        widget.isDark ? 0.25 : 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: me.color.lightGlow.withOpacity(0.7), width: 1),
+                  ),
+                  // Collapses to avatar-only when the bar is crowded so
+                  // the Row can never overflow on narrow phones.
+                  child: LayoutBuilder(
+                    builder: (context, chipConstraints) {
+                      final showName = chipConstraints.maxWidth >= 60;
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PinAvatar(
+                              color: me.color,
+                              size: 22,
+                              isDark: widget.isDark),
+                          if (showName) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                '${me.color.emblemGlyph} $turnLabel',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  color: fg,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
               if (showChip) ...[
@@ -372,170 +426,4 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  /// Compact turn dock: active orb avatar, name + team, home progress, and
-  /// one big ROLL pill. The whole dock is tappable.
-  Widget _buildTurnDock(
-    GameState gameState,
-    GameController controller,
-    LudoColor activeColor,
-  ) {
-    final me = gameState.currentPlayer;
-    final canAct = (gameState.canRollDice ||
-            (gameState.mustSelectToken &&
-                gameState.movableTokenIds.length == 1)) &&
-        !_boardAnimating;
-
-    final String actionText;
-    if (_boardAnimating) {
-      actionText = 'MOVING…';
-    } else if (gameState.canRollDice) {
-      actionText = 'TAP TO ROLL';
-    } else if (gameState.mustSelectToken) {
-      actionText = gameState.movableTokenIds.length == 1
-          ? 'TAP TO MOVE'
-          : 'PICK A GLOWING ${me.color.emblemGlyph}';
-    } else {
-      actionText = '…';
-    }
-
-    final teamSuffix =
-        gameState.teamMode ? ' • ${Player.teamName(me.teamId)}' : '';
-
-    return GestureDetector(
-      onTap: () => _primaryAction(gameState, controller),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color.alphaBlend(
-                activeColor.primary.withOpacity(widget.isDark ? 0.32 : 0.20),
-                widget.isDark ? const Color(0xFF16203A) : Colors.white,
-              ),
-              Color.alphaBlend(
-                activeColor.primary.withOpacity(widget.isDark ? 0.16 : 0.08),
-                widget.isDark ? const Color(0xFF111A2E) : const Color(0xFFFDFDFB),
-              ),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: activeColor.lightGlow.withOpacity(canAct ? 0.9 : 0.35),
-            width: canAct ? 2.0 : 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: activeColor.primary.withOpacity(widget.isDark ? 0.35 : 0.20),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            PinAvatar(color: me.color, size: 46, isDark: widget.isDark),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${me.color.emblemGlyph} ${me.name}$teamSuffix',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: widget.isDark ? Colors.white : const Color(0xFF0F172A),
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  _buildProgressDots(me, activeColor),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            _buildRollPill(actionText, activeColor, canAct),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressDots(Player me, LudoColor color) {
-    // 4 segments: grey = base, color = out, gold star = home.
-    return Row(
-      children: [
-        ...me.tokens.map((t) {
-          Color fill;
-          if (t.isHome) {
-            fill = const Color(0xFFF2C14E);
-          } else if (t.isInBase) {
-            fill = widget.isDark
-                ? const Color(0xFF39465E)
-                : const Color(0xFFC8CFD9);
-          } else {
-            fill = color.primary;
-          }
-          return Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(right: 4),
-              height: 9,
-              decoration: BoxDecoration(
-                color: fill,
-                borderRadius: BorderRadius.circular(5),
-              ),
-            ),
-          );
-        }),
-        const SizedBox(width: 6),
-        Text(
-          '${me.tokensHomeCount}/4',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: widget.isDark ? Colors.white70 : const Color(0xFF475569),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRollPill(String text, LudoColor color, bool canAct) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: canAct
-              ? [color.lightGlow, color.primary]
-              : [Colors.grey.shade400, Colors.grey.shade500],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          if (canAct)
-            BoxShadow(
-              color: color.primary.withOpacity(0.5),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-        ],
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.6,
-          shadows: [Shadow(color: Colors.black45, blurRadius: 3)],
-        ),
-      ),
-    );
-  }
 }
