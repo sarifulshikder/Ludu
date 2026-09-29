@@ -1,407 +1,289 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
+
 import '../../core/board_coordinates.dart';
 import '../../models/ludo_color.dart';
 
+/// Paints the board in a flat, high-contrast board-game style: solid saturated
+/// yards and lanes, light track cells separated by thin dark rules, outlined
+/// star safe-squares, arrowed start squares and a bare four-triangle centre.
 class BoardPainter extends CustomPainter {
   final bool isDark;
 
   BoardPainter({required this.isDark});
 
+  // --- Surfaces -----------------------------------------------------------
+
+  // The board reads as a physical object, so the cells stay light in both
+  // themes for maximum contrast against the pieces.
+  Color get _trackFill => isDark ? const Color(0xFFE9EDF4) : const Color(0xFFFFFFFF);
+  Color get _trackRule => isDark ? const Color(0xFF9AA3B2) : const Color(0xFFB9B3A6);
+  Color get _frameInk => isDark ? const Color(0xFF64789E) : const Color(0xFF8C8577);
+  Color get _ink => isDark ? const Color(0xFF0A1120) : const Color(0xFF1F2937);
+  Color get _paper => isDark ? const Color(0xFFEDF1F7) : const Color(0xFFFCFCFA);
+
   @override
   void paint(Canvas canvas, Size size) {
     final double tileSize = size.width / 15.0;
 
-    _drawBoardBackground(canvas, size);
-    _drawBases(canvas, tileSize);
-    _drawTrackTiles(canvas, tileSize);
+    _drawBoard(canvas, size);
+    _drawYards(canvas, tileSize);
+    _drawTrackCells(canvas, tileSize);
     _drawHomeStretches(canvas, tileSize);
-    _drawCenterTriangle(canvas, tileSize);
+    _drawCentre(canvas, tileSize);
     _drawSafeStars(canvas, tileSize);
+    _drawStartArrows(canvas, tileSize);
   }
 
-  void _drawBoardBackground(Canvas canvas, Size size) {
-    final rrect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      const Radius.circular(24),
-    );
+  // --- Board shell --------------------------------------------------------
 
-    // Deep base colour
+  void _drawBoard(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(14));
+
     canvas.drawRRect(
       rrect,
       Paint()
-        ..color = isDark ? const Color(0xFF0F172A) : const Color(0xFFFAF7F2)
+        ..color = isDark ? const Color(0xFF0C1424) : const Color(0xFFF2EEE6)
         ..style = PaintingStyle.fill,
     );
 
-    // Soft top-lit vignette so the board reads as a physical, bevelled object
-    // rather than a flat swatch.
     canvas.drawRRect(
       rrect,
       Paint()
-        ..shader = RadialGradient(
-          colors: isDark
-              ? [const Color(0xFF1B2942).withOpacity(0.85), Colors.transparent]
-              : [Colors.white.withOpacity(0.95), Colors.transparent],
-          center: const Alignment(-0.3, -0.5),
-          radius: 1.15,
-        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
-    );
-
-    // Metallic gold frame: a wide gradient stroke reads as polished metal.
-    final goldFrame = Paint()
-      ..shader = LinearGradient(
-        colors: const [
-          Color(0xFFF7E7A1),
-          Color(0xFFD4AF37),
-          Color(0xFF8C6D1F),
-          Color(0xFFE8CE72),
-          Color(0xFF9C7A24),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.0;
-    canvas.drawRRect(rrect, goldFrame);
-
-    // Crisp inner bevel line
-    canvas.drawRRect(
-      rrect.deflate(6.5),
-      Paint()
-        ..color = isDark ? Colors.white.withOpacity(0.16) : Colors.black.withOpacity(0.10)
+        ..color = _frameInk
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = 3.0,
     );
   }
 
-  void _drawBases(Canvas canvas, double tileSize) {
-    void drawBaseBox(double col, double row, LudoColor color) {
-      final rect = Rect.fromLTWH(col * tileSize, row * tileSize, tileSize * 6, tileSize * 6);
-      final rrect = RRect.fromRectAndRadius(rect.deflate(2), const Radius.circular(18));
+  // --- Corner yards -------------------------------------------------------
 
-      // Outer rich satin gradient
-      final baseGradient = RadialGradient(
-        colors: [
-          color.primary.withOpacity(isDark ? 0.45 : 0.28),
-          color.darkShade.withOpacity(isDark ? 0.85 : 0.48),
-        ],
-        center: Alignment.center,
-        radius: 0.95,
+  void _drawYards(Canvas canvas, double tileSize) {
+    void yard(double col, double row, LudoColor color) {
+      final outer = Rect.fromLTWH(
+        col * tileSize,
+        row * tileSize,
+        tileSize * 6,
+        tileSize * 6,
       );
+      final outerRRect = RRect.fromRectAndRadius(outer, const Radius.circular(8));
 
-      final paint = Paint()
-        ..shader = baseGradient.createShader(rect)
-        ..style = PaintingStyle.fill;
-
-      canvas.drawRRect(rrect, paint);
-
-      // Gold/metallic border
-      final borderPaint = Paint()
-        ..color = color.primary.withOpacity(0.9)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.4;
-
-      canvas.drawRRect(rrect, borderPaint);
-
-      // Diagonal glass sheen across the yard for depth
-      canvas.save();
-      canvas.clipRRect(rrect);
+      // Solid saturated yard.
+      canvas.drawRRect(outerRRect, Paint()..color = color.primary);
       canvas.drawRRect(
-        rrect,
+        outerRRect,
         Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withOpacity(isDark ? 0.14 : 0.45),
-              Colors.transparent,
-              Colors.black.withOpacity(isDark ? 0.18 : 0.05),
-            ],
-            stops: const [0.0, 0.45, 1.0],
-          ).createShader(rect)
-          ..style = PaintingStyle.fill,
-      );
-      canvas.restore();
-
-      // Inner platform
-      final innerRect = Rect.fromLTWH(
-        (col + 0.9) * tileSize,
-        (row + 0.9) * tileSize,
-        tileSize * 4.2,
-        tileSize * 4.2,
-      );
-      final innerRRect = RRect.fromRectAndRadius(innerRect, const Radius.circular(16));
-
-      final innerPaint = Paint()
-        ..color = isDark ? const Color(0xFF131D2E) : Colors.white
-        ..style = PaintingStyle.fill;
-      canvas.drawRRect(innerRRect, innerPaint);
-
-      final innerBorder = Paint()
-        ..color = color.primary.withOpacity(isDark ? 0.35 : 0.25)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5;
-      canvas.drawRRect(innerRRect, innerBorder);
-
-      // 4 Large circular pedestals for tokens
-      final podRadius = tileSize * 0.82;
-      for (final slot in BoardCoordinates.baseSlots[color]!) {
-        final center = slot.toOffset(tileSize);
-
-        // Outer glow rim
-        final podGlow = Paint()
-          ..color = color.primary.withOpacity(isDark ? 0.22 : 0.15)
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, podRadius, podGlow);
-
-        // Inner recessed ring
-        final podInner = Paint()
-          ..color = isDark ? const Color(0xFF0D1424) : const Color(0xFFF1F5F9)
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, podRadius * 0.82, podInner);
-
-        // Metallic bezel
-        final podBorder = Paint()
-          ..shader = LinearGradient(
-            colors: [color.lightGlow, color.darkShade],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ).createShader(Rect.fromCircle(center: center, radius: podRadius))
+          ..color = _ink.withOpacity(0.55)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.4;
-        canvas.drawCircle(center, podRadius, podBorder);
+          ..strokeWidth = 1.6,
+      );
+
+      // White holding panel the pieces rest in.
+      final panel = Rect.fromLTWH(
+        (col + 0.95) * tileSize,
+        (row + 0.95) * tileSize,
+        tileSize * 4.1,
+        tileSize * 4.1,
+      );
+      final panelRRect = RRect.fromRectAndRadius(panel, const Radius.circular(6));
+      canvas.drawRRect(panelRRect, Paint()..color = _paper);
+      canvas.drawRRect(
+        panelRRect,
+        Paint()
+          ..color = _ink.withOpacity(0.65)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6,
+      );
+
+      // Seats stay behind when a piece leaves: a coloured disc just larger than
+      // the pin head, so a thin rim shows around it as in the reference.
+      for (final slot in BoardCoordinates.baseSlots[color]!) {
+        final c = slot.toOffset(tileSize);
+        canvas.drawCircle(c, tileSize * 0.46, Paint()..color = color.primary);
+        canvas.drawCircle(
+          c,
+          tileSize * 0.46,
+          Paint()
+            ..color = color.darkShade
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4,
+        );
       }
     }
 
-    // Top-Left: Red
-    drawBaseBox(0, 0, LudoColor.red);
-    // Top-Right: Green
-    drawBaseBox(9, 0, LudoColor.green);
-    // Bottom-Right: Yellow
-    drawBaseBox(9, 9, LudoColor.yellow);
-    // Bottom-Left: Blue
-    drawBaseBox(0, 9, LudoColor.blue);
+    yard(0, 0, LudoColor.red); // top-left
+    yard(9, 0, LudoColor.green); // top-right
+    yard(9, 9, LudoColor.yellow); // bottom-right
+    yard(0, 9, LudoColor.blue); // bottom-left
   }
 
-  void _drawTrackTiles(Canvas canvas, double tileSize) {
-    final tileBg = Paint()
-      ..color = isDark ? const Color(0xFF1D2A42) : const Color(0xFFFCFAF6)
-      ..style = PaintingStyle.fill;
+  // --- Track --------------------------------------------------------------
 
-    final tileBgAlt = Paint()
-      ..color = isDark ? const Color(0xFF182338) : const Color(0xFFF2EEE6)
-      ..style = PaintingStyle.fill;
-
-    // Soft top bevel on every tile gives the track a physical, moulded feel.
-    final tileTopLight = Paint()
-      ..color = isDark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.85)
-      ..style = PaintingStyle.fill;
-
-    final tileBorder = Paint()
-      ..color = isDark ? const Color(0xFF39496A) : const Color(0xFFD6CFC0)
+  void _drawTrackCells(Canvas canvas, double tileSize) {
+    final fill = Paint()..color = _trackFill;
+    final rule = Paint()
+      ..color = _trackRule
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.9;
+      ..strokeWidth = 1.0;
 
-    for (int i = 0; i < BoardCoordinates.outerTrack.length; i++) {
-      final pt = BoardCoordinates.outerTrack[i];
+    for (final pt in BoardCoordinates.outerTrack) {
       final rect = Rect.fromLTWH(
-        pt.col * tileSize + 1,
-        pt.row * tileSize + 1,
-        tileSize - 2,
-        tileSize - 2,
+        pt.col * tileSize + 0.8,
+        pt.row * tileSize + 0.8,
+        tileSize - 1.6,
+        tileSize - 1.6,
       );
-      final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(5));
-
-      // Check if start square
-      LudoColor? startColor;
-      if (i == LudoColor.red.startSquare) startColor = LudoColor.red;
-      if (i == LudoColor.green.startSquare) startColor = LudoColor.green;
-      if (i == LudoColor.yellow.startSquare) startColor = LudoColor.yellow;
-      if (i == LudoColor.blue.startSquare) startColor = LudoColor.blue;
-
-      if (startColor != null) {
-        // Start squares get the player's colour with a lit top edge.
-        final startPaint = Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              startColor.lightGlow.withOpacity(isDark ? 0.85 : 0.70),
-              startColor.primary.withOpacity(isDark ? 0.80 : 0.62),
-            ],
-          ).createShader(rect)
-          ..style = PaintingStyle.fill;
-        canvas.drawRRect(rrect, startPaint);
-
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.45),
-            const Radius.circular(5),
-          ),
-          Paint()
-            ..color = Colors.white.withOpacity(0.16)
-            ..style = PaintingStyle.fill,
-        );
-
-        canvas.drawRRect(
-          rrect,
-          Paint()
-            ..color = startColor.lightGlow
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.8,
-        );
-      } else {
-        // Alternating tone breaks up the long track and aids legibility.
-        canvas.drawRRect(rrect, i.isEven ? tileBg : tileBgAlt);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.42),
-            const Radius.circular(5),
-          ),
-          tileTopLight,
-        );
-        canvas.drawRRect(rrect, tileBorder);
-      }
+      final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(3));
+      canvas.drawRRect(rrect, fill);
+      canvas.drawRRect(rrect, rule);
     }
   }
 
   void _drawHomeStretches(Canvas canvas, double tileSize) {
     for (final entry in BoardCoordinates.homeStretches.entries) {
-      final color = entry.key;
-      final tiles = entry.value;
-
-      final fillPaint = Paint()
-        ..color = color.primary.withOpacity(isDark ? 0.85 : 0.75)
-        ..style = PaintingStyle.fill;
-
-      final borderPaint = Paint()
-        ..color = color.lightGlow.withOpacity(0.9)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4;
-
-      for (int idx = 0; idx < tiles.length; idx++) {
-        final pt = tiles[idx];
+      for (final pt in entry.value) {
         final rect = Rect.fromLTWH(
-          pt.col * tileSize + 1,
-          pt.row * tileSize + 1,
-          tileSize - 2,
-          tileSize - 2,
+          pt.col * tileSize + 0.8,
+          pt.row * tileSize + 0.8,
+          tileSize - 1.6,
+          tileSize - 1.6,
         );
-        final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(5));
-        canvas.drawRRect(rrect, fillPaint);
-        canvas.drawRRect(rrect, borderPaint);
-
-        // Direction chevron pointing toward center
-        _drawHomeChevron(canvas, pt.toOffset(tileSize), color, tileSize * 0.22);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+          Paint()..color = entry.key.primary,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+          Paint()
+            ..color = _ink.withOpacity(0.45)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0,
+        );
       }
     }
   }
 
-  void _drawHomeChevron(Canvas canvas, Offset center, LudoColor color, double size) {
-    final chevronPaint = Paint()
-      ..color = Colors.white.withOpacity(0.65)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
+  // --- Centre -------------------------------------------------------------
 
-    final path = Path();
-    switch (color) {
-      case LudoColor.red:
-        // Points East
-        path.moveTo(center.dx - size * 0.5, center.dy - size);
-        path.lineTo(center.dx + size * 0.5, center.dy);
-        path.lineTo(center.dx - size * 0.5, center.dy + size);
-        break;
-      case LudoColor.green:
-        // Points South
-        path.moveTo(center.dx - size, center.dy - size * 0.5);
-        path.lineTo(center.dx, center.dy + size * 0.5);
-        path.lineTo(center.dx + size, center.dy - size * 0.5);
-        break;
-      case LudoColor.yellow:
-        // Points West
-        path.moveTo(center.dx + size * 0.5, center.dy - size);
-        path.lineTo(center.dx - size * 0.5, center.dy);
-        path.lineTo(center.dx + size * 0.5, center.dy + size);
-        break;
-      case LudoColor.blue:
-        // Points North
-        path.moveTo(center.dx - size, center.dy + size * 0.5);
-        path.lineTo(center.dx, center.dy - size * 0.5);
-        path.lineTo(center.dx + size, center.dy + size * 0.5);
-        break;
-    }
-    canvas.drawPath(path, chevronPaint);
-  }
+  void _drawCentre(Canvas canvas, double tileSize) {
+    final centre = Offset(7.5 * tileSize, 7.5 * tileSize);
+    // The centre block is 3x3 cells, so the half-width is 1.5 tiles.
+    const r = 1.5;
 
-  void _drawCenterTriangle(Canvas canvas, double tileSize) {
-    final center = Offset(7.5 * tileSize, 7.5 * tileSize);
-
-    void drawQuadrant(LudoColor color, Offset p1, Offset p2) {
+    void quadrant(LudoColor color, Offset a, Offset b) {
       final path = Path()
-        ..moveTo(center.dx, center.dy)
-        ..lineTo(p1.dx, p1.dy)
-        ..lineTo(p2.dx, p2.dy)
+        ..moveTo(centre.dx, centre.dy)
+        ..lineTo(a.dx, a.dy)
+        ..lineTo(b.dx, b.dy)
         ..close();
 
-      final paint = Paint()
-        ..color = color.primary.withOpacity(isDark ? 0.90 : 0.82)
-        ..style = PaintingStyle.fill;
-
-      final borderPaint = Paint()
-        ..color = color.lightGlow
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.8;
-
-      canvas.drawPath(path, paint);
-      canvas.drawPath(path, borderPaint);
+      canvas.drawPath(path, Paint()..color = color.primary);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = _ink.withOpacity(0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4,
+      );
     }
 
-    // Red (Left)
-    drawQuadrant(LudoColor.red, Offset(6.0 * tileSize, 6.0 * tileSize), Offset(6.0 * tileSize, 9.0 * tileSize));
-    // Green (Top)
-    drawQuadrant(LudoColor.green, Offset(6.0 * tileSize, 6.0 * tileSize), Offset(9.0 * tileSize, 6.0 * tileSize));
-    // Yellow (Right)
-    drawQuadrant(LudoColor.yellow, Offset(9.0 * tileSize, 6.0 * tileSize), Offset(9.0 * tileSize, 9.0 * tileSize));
-    // Blue (Bottom)
-    drawQuadrant(LudoColor.blue, Offset(6.0 * tileSize, 9.0 * tileSize), Offset(9.0 * tileSize, 9.0 * tileSize));
-
-    // Center Golden Trophy Crest
-    final crestBg = Paint()
-      ..color = const Color(0xFF1E293B)
-      ..style = PaintingStyle.fill;
-    final crestBorder = Paint()
-      ..color = const Color(0xFFFFD700)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2;
-
-    canvas.drawCircle(center, tileSize * 0.72, crestBg);
-    canvas.drawCircle(center, tileSize * 0.72, crestBorder);
-
-    // Golden star in center crest
-    _drawStar(canvas, center, tileSize * 0.42, const Color(0xFFFFD700));
+    // Each colour owns the side its home lane runs along.
+    quadrant(
+      LudoColor.red,
+      Offset((7.5 - r) * tileSize, (7.5 - r) * tileSize),
+      Offset((7.5 - r) * tileSize, (7.5 + r) * tileSize),
+    );
+    quadrant(
+      LudoColor.green,
+      Offset((7.5 - r) * tileSize, (7.5 - r) * tileSize),
+      Offset((7.5 + r) * tileSize, (7.5 - r) * tileSize),
+    );
+    quadrant(
+      LudoColor.yellow,
+      Offset((7.5 + r) * tileSize, (7.5 - r) * tileSize),
+      Offset((7.5 + r) * tileSize, (7.5 + r) * tileSize),
+    );
+    quadrant(
+      LudoColor.blue,
+      Offset((7.5 - r) * tileSize, (7.5 + r) * tileSize),
+      Offset((7.5 + r) * tileSize, (7.5 + r) * tileSize),
+    );
   }
+
+  // --- Safe stars ---------------------------------------------------------
 
   void _drawSafeStars(Canvas canvas, double tileSize) {
-    for (final safeIdx in BoardCoordinates.safeSquares) {
-      final pt = BoardCoordinates.outerTrack[safeIdx];
-      final center = pt.toOffset(tileSize);
-      _drawStar(canvas, center, tileSize * 0.36, const Color(0xFFFFC107));
+    for (final index in BoardCoordinates.safeSquares) {
+      // Start squares carry an arrow instead, so they stay uncluttered.
+      if (_startColorFor(index) != null) continue;
+      final pt = BoardCoordinates.outerTrack[index];
+      _star(
+        canvas,
+        pt.toOffset(tileSize),
+        tileSize * 0.34,
+        Paint()
+          ..color = _ink.withOpacity(0.75)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6,
+        fill: false,
+      );
     }
   }
 
-  void _drawStar(Canvas canvas, Offset center, double outerRadius, Color color) {
-    final innerRadius = outerRadius * 0.45;
-    final path = Path();
-    const int points = 5;
-    const double step = pi / points;
+  // --- Start arrows -------------------------------------------------------
 
+  LudoColor? _startColorFor(int index) {
+    if (index == LudoColor.red.startSquare) return LudoColor.red;
+    if (index == LudoColor.green.startSquare) return LudoColor.green;
+    if (index == LudoColor.yellow.startSquare) return LudoColor.yellow;
+    if (index == LudoColor.blue.startSquare) return LudoColor.blue;
+    return null;
+  }
+
+  void _drawStartArrows(Canvas canvas, double tileSize) {
+    for (int i = 0; i < BoardCoordinates.outerTrack.length; i++) {
+      final color = _startColorFor(i);
+      if (color == null) continue;
+      final pt = BoardCoordinates.outerTrack[i];
+      _arrow(canvas, pt.toOffset(tileSize), tileSize * 0.40, color.primary, i);
+    }
+  }
+
+  /// Filled arrow: triangular head on a narrower shaft, pointing along travel.
+  void _arrow(Canvas canvas, Offset centre, double size, Color color, int index) {
+    final next = BoardCoordinates.outerTrack[(index + 1) % BoardCoordinates.outerTrack.length];
+    final cur = BoardCoordinates.outerTrack[index];
+    final d = Offset((next.col - cur.col).sign.toDouble(), (next.row - cur.row).sign.toDouble());
+    final w = Offset(-d.dy, d.dx);
+
+    Offset p(double along, double across) =>
+        centre + d * (size * along) + w * (size * across);
+
+    final path = Path()
+      ..moveTo(p(1.0, 0.0).dx, p(1.0, 0.0).dy) // tip
+      ..lineTo(p(0.25, 0.75).dx, p(0.25, 0.75).dy) // head barb
+      ..lineTo(p(-0.15, 0.30).dx, p(-0.15, 0.30).dy) // shaft
+      ..lineTo(p(-0.85, 0.30).dx, p(-0.85, 0.30).dy) // tail
+      ..lineTo(p(-0.85, -0.30).dx, p(-0.85, -0.30).dy)
+      ..lineTo(p(-0.15, -0.30).dx, p(-0.15, -0.30).dy)
+      ..lineTo(p(0.25, -0.75).dx, p(0.25, -0.75).dy)
+      ..close();
+
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  void _star(Canvas canvas, Offset centre, double outer, Paint paint, {bool fill = true}) {
+    final inner = outer * 0.46;
+    final path = Path();
+    const points = 5;
+    final step = pi / points;
     for (int i = 0; i < points * 2; i++) {
-      final r = (i % 2 == 0) ? outerRadius : innerRadius;
+      final r = i.isEven ? outer : inner;
       final angle = i * step - pi / 2;
-      final x = center.dx + r * cos(angle);
-      final y = center.dy + r * sin(angle);
+      final x = centre.dx + r * cos(angle);
+      final y = centre.dy + r * sin(angle);
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -409,28 +291,14 @@ class BoardPainter extends CustomPainter {
       }
     }
     path.close();
-
-    // Shadow
-    final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.4)
-      ..style = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
-
-    final starFill = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final starStroke = Paint()
-      ..color = Colors.white.withOpacity(0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    canvas.drawPath(path, starFill);
-    canvas.drawPath(path, starStroke);
+    if (fill) {
+      canvas.drawPath(path, paint);
+    } else {
+      paint.style = PaintingStyle.stroke;
+      canvas.drawPath(path, paint);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant BoardPainter oldDelegate) =>
-      oldDelegate.isDark != isDark;
+  bool shouldRepaint(covariant BoardPainter oldDelegate) => oldDelegate.isDark != isDark;
 }

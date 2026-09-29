@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/board_coordinates.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
+import '../../models/player.dart';
 import '../../models/token.dart';
 import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
@@ -119,8 +120,8 @@ class _LudoBoardState extends State<LudoBoard> {
         final double tileSize = boardDimension / 15.0;
         // Pieces are deliberately chunky: they fill their tile on the track and
         // spill slightly into the yard in the home bases.
-        final double trackTokenSize = tileSize * 1.02;
-        final double baseTokenSize = tileSize * 1.30;
+        final double trackTokenSize = tileSize * 0.98;
+        final double baseTokenSize = tileSize * 1.04;
 
         return Center(
           child: Container(
@@ -196,12 +197,75 @@ class _LudoBoardState extends State<LudoBoard> {
 
                 // Tokens layer
                 ..._buildAllTokens(boardDimension, tileSize, trackTokenSize, baseTokenSize),
+
+                // Player names painted onto the yards, rotated per quadrant so
+                // each one reads outward from the board.
+                ..._buildYardLabels(tileSize),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  List<Widget> _buildYardLabels(double tileSize) {
+    final widgets = <Widget>[];
+
+    void add(LudoColor color, double cx, double cy, int turns) {
+      Player? player;
+      for (final p in widget.gameState.players) {
+        if (p.color == color) {
+          player = p;
+          break;
+        }
+      }
+      if (player == null) return;
+
+      final w = tileSize * 2.9;
+      final h = tileSize * 0.66;
+
+      widgets.add(
+        Positioned(
+          left: cx * tileSize - w / 2,
+          top: cy * tileSize - h / 2,
+          width: w,
+          height: h,
+          child: Transform.rotate(
+            angle: turns * pi / 2,
+            child: Center(
+              child: Text(
+                player.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: tileSize * 0.40,
+                  fontWeight: FontWeight.w900,
+                  height: 1.0,
+                  shadows: const [
+                    Shadow(
+                      color: Color(0xCC000000),
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Clockwise around the board, each turned a further quarter turn.
+    add(LudoColor.red, 0.42, 3.0, 1); // top-left yard, left edge
+    add(LudoColor.green, 12.0, 0.42, 2); // top-right yard, top edge
+    add(LudoColor.yellow, 14.58, 12.0, 3); // bottom-right yard, right edge
+    add(LudoColor.blue, 3.0, 14.58, 0); // bottom-left yard, bottom edge
+
+    return widgets;
   }
 
   List<Widget> _buildAllTokens(
@@ -258,16 +322,19 @@ class _LudoBoardState extends State<LudoBoard> {
         final bool isAnimating = item['isAnimating'];
 
         final double currentTokenSize = token.isInBase ? baseTokenSize : trackTokenSize;
+        // A pin is identified by its head, so the head is centred on the square
+        // and the point hangs below it.
+        final double headOffset = currentTokenSize * kTokenPinAspect * kTokenHeadOffset;
 
         Offset offset = Offset.zero;
         if (count > 1 && !token.isInBase) {
           final angle = (2 * pi / count) * i;
-          final radius = tileSize * 0.20;
+          final radius = tileSize * 0.22;
           offset = Offset(cos(angle) * radius, sin(angle) * radius);
         }
 
-        final targetLeft = pt.col * tileSize + (tileSize - currentTokenSize) / 2 + offset.dx;
-        final targetTop = pt.row * tileSize + (tileSize - currentTokenSize) / 2 + offset.dy;
+        final targetLeft = pt.col * tileSize + tileSize / 2 - currentTokenSize / 2 + offset.dx;
+        final targetTop = pt.row * tileSize + tileSize / 2 - headOffset + offset.dy;
 
         tokenWidgets.add(
           AnimatedPositioned(

@@ -6,6 +6,7 @@ import '../../models/player.dart';
 import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 import '../../state/game_controller.dart';
+import '../board/board_backdrop.dart';
 import '../board/ludo_board.dart';
 import '../widgets/player_box_widget.dart';
 import 'victory_screen.dart';
@@ -31,10 +32,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   // Layout constants for the adaptive, edge-to-edge play area.
   static const double _topBarHeight = 48.0;
-  static const double _statusHeight = 56.0;
+  static const double _statusHeight = 50.0;
   static const double _gap = 7.0;
-  static const double _minCardHeight = 100.0;
-  static const double _maxCardHeight = 186.0;
+  static const double _arrowSlot = 34.0;
+  static const double _boardMargin = 14.0;
+  static const double _minCardHeight = 96.0;
+  static const double _maxCardHeight = 124.0;
 
   void _toggleMute() {
     HapticsService.light();
@@ -151,8 +154,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  /// Rich ambient background so the board and cards sit on something premium
-  /// instead of a flat colour.
+  /// Ambient themed backdrop so the board floats on something designed rather
+  /// than a flat colour.
   Widget _buildBackdrop({
     required GameState gameState,
     required GameController controller,
@@ -162,70 +165,103 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     required Player? yellowPlayer,
     required Player? bluePlayer,
   }) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: widget.isDark
-              ? const [Color(0xFF0C1424), Color(0xFF070B14), Color(0xFF0B1220)]
-              : const [Color(0xFFF6F1E8), Color(0xFFEDE7DC), Color(0xFFF3EDE3)],
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: widget.isDark
+                    ? const [Color(0xFF0B1A33), Color(0xFF060C18), Color(0xFF0A1526)]
+                    : const [Color(0xFFEAF1F8), Color(0xFFDDE7F1), Color(0xFFE6EEF6)],
+              ),
+            ),
+          ),
         ),
-      ),
-      child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final cardHeight = _computeCardHeight(constraints);
+        Positioned.fill(
+          child: CustomPaint(
+            painter: BoardBackdropPainter(
+              isDark: widget.isDark,
+              accent: widget.isDark
+                  ? const Color(0xFF4DA3FF)
+                  : const Color(0xFF1E5FA8),
+            ),
+          ),
+        ),
+        SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final cardHeight = _computeCardHeight(constraints);
+              final topRowActive = currentPlayerIndexIsTopRow(gameState);
 
-            return Column(
-              children: [
-                SizedBox(height: _topBarHeight, child: _buildTopBar()),
-                const SizedBox(height: _gap),
-                _buildPlayerRow(
-                  gameState: gameState,
-                  controller: controller,
-                  left: redPlayer,
-                  right: greenPlayer,
-                  cardHeight: cardHeight,
-                ),
-                const SizedBox(height: _gap),
-
-                // The board takes every remaining pixel and is free to grow
-                // up to the full screen width.
-                Expanded(
-                  child: LudoBoard(
+              return Column(
+                children: [
+                  SizedBox(height: _topBarHeight, child: _buildTopBar()),
+                  const SizedBox(height: _gap),
+                  _buildPlayerRow(
                     gameState: gameState,
-                    onTokenSelected: (tokenId) => controller.moveToken(tokenId),
-                    onRollDice: () => controller.rollDice(),
+                    controller: controller,
+                    left: redPlayer,
+                    right: greenPlayer,
+                    cardHeight: cardHeight,
+                    showArrow: topRowActive,
+                    arrowRight: false,
                   ),
-                ),
+                  const SizedBox(height: _gap),
 
-                const SizedBox(height: _gap),
-                SizedBox(
-                  height: _statusHeight,
-                  child: _buildStatusBanner(gameState, activeColor, controller),
-                ),
-                const SizedBox(height: _gap),
-                _buildPlayerRow(
-                  gameState: gameState,
-                  controller: controller,
-                  left: bluePlayer,
-                  right: yellowPlayer,
-                  cardHeight: cardHeight,
-                ),
-              ],
-            );
-          },
+                  // The board floats on the backdrop with a margin, as in the
+                  // reference games.
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: _boardMargin),
+                      child: LudoBoard(
+                        gameState: gameState,
+                        onTokenSelected: (tokenId) => controller.moveToken(tokenId),
+                        onRollDice: () => controller.rollDice(),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: _gap),
+                  SizedBox(
+                    height: _statusHeight,
+                    child: _buildStatusBanner(gameState, activeColor, controller),
+                  ),
+                  const SizedBox(height: _gap),
+                  _buildPlayerRow(
+                    gameState: gameState,
+                    controller: controller,
+                    left: bluePlayer,
+                    right: yellowPlayer,
+                    cardHeight: cardHeight,
+                    showArrow: !topRowActive,
+                    arrowRight: true,
+                  ),
+                ],
+              );
+            },
+          ),
         ),
-      ),
+      ],
     );
   }
 
+  /// Play runs right-to-left along the top row and left-to-right along the
+  /// bottom, so the turn arrow sits on whichever row is active.
+  bool currentPlayerIndexIsTopRow(GameState gameState) {
+    final color = gameState.currentPlayer.color;
+    return color == LudoColor.red || color == LudoColor.green;
+  }
+
   /// Spends whatever vertical space is left over on making the player cards
-  /// taller, so the board stays full-width while the cards grow.
+  /// taller. The board is width-bound once its margin is taken off, so spare
+  /// vertical space is free.
   double _computeCardHeight(BoxConstraints constraints) {
     final fixed = _topBarHeight + _statusHeight + (_gap * 4);
-    final slack = constraints.maxHeight - fixed - constraints.maxWidth;
+    final usable = constraints.maxWidth - (_boardMargin * 2);
+    final slack = constraints.maxHeight - fixed - usable;
     return (slack / 2).clamp(_minCardHeight, _maxCardHeight).toDouble();
   }
 
@@ -235,6 +271,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     required Player? left,
     required Player? right,
     required double cardHeight,
+    required bool showArrow,
+    required bool arrowRight,
   }) {
     Widget buildCard(Player? player) {
       if (player == null) return const SizedBox.shrink();
@@ -257,13 +295,45 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 10.0),
       child: Row(
         children: [
           Expanded(child: buildCard(left)),
-          const SizedBox(width: _gap),
+          SizedBox(
+            width: _arrowSlot,
+            child: Center(
+              child: AnimatedOpacity(
+                opacity: showArrow ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 180),
+                child: _buildTurnArrow(arrowRight),
+              ),
+            ),
+          ),
           Expanded(child: buildCard(right)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTurnArrow(bool pointsRight) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFA726),
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFFA726).withOpacity(0.55),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(
+        pointsRight ? Icons.arrow_forward_rounded : Icons.arrow_back_rounded,
+        size: 15,
+        color: Colors.white,
       ),
     );
   }

@@ -55,42 +55,43 @@ extension LudoColorExt on LudoColor {
     }
   }
 
+  /// Saturated flat fill used across the board, tokens and player chrome.
   Color get primary {
     switch (this) {
       case LudoColor.red:
-        return const Color(0xFFE63946); // Ruby
+        return const Color(0xFFE03131); // Red
       case LudoColor.green:
-        return const Color(0xFF2A9D8F); // Emerald
+        return const Color(0xFF2F9E44); // Green
       case LudoColor.yellow:
-        return const Color(0xFFE9C46A); // Warm Amber Gold
+        return const Color(0xFFFAB005); // Yellow
       case LudoColor.blue:
-        return const Color(0xFF277DA1); // Sapphire
+        return const Color(0xFF1971C2); // Blue
     }
   }
 
   Color get darkShade {
     switch (this) {
       case LudoColor.red:
-        return const Color(0xFF9E1B25);
+        return const Color(0xFFC92A2A);
       case LudoColor.green:
-        return const Color(0xFF1B635A);
+        return const Color(0xFF2B8A3E);
       case LudoColor.yellow:
-        return const Color(0xFFB58A26);
+        return const Color(0xFFE8B90A);
       case LudoColor.blue:
-        return const Color(0xFF154C63);
+        return const Color(0xFF1864AB);
     }
   }
 
   Color get lightGlow {
     switch (this) {
       case LudoColor.red:
-        return const Color(0xFFFF6B6B);
+        return const Color(0xFFFF8787);
       case LudoColor.green:
-        return const Color(0xFF48CAE4);
+        return const Color(0xFF69DB7C);
       case LudoColor.yellow:
-        return const Color(0xFFFFD166);
+        return const Color(0xFFFFE066);
       case LudoColor.blue:
-        return const Color(0xFF4EA8DE);
+        return const Color(0xFF4DABF7);
     }
   }
 

@@ -6,8 +6,17 @@ import '../../models/ludo_color.dart';
 import '../../models/token.dart';
 import '../../services/haptics_service.dart';
 
-/// A token rendered as a physical, domed game piece: metallic rim, lit dome,
-/// specular hotspot, bounce light and a soft contact shadow.
+/// Height of a piece as a multiple of its width. The board uses this to anchor
+/// the pin's head on the square it occupies.
+const double kTokenPinAspect = 1.06;
+
+/// Fraction of the piece height at which the head sits, used by the board to
+/// line the head up with the square centre.
+const double kTokenHeadOffset = 0.37;
+
+/// A piece drawn as a map-pin / location marker, matching the sample games:
+/// a light bevelled pin body with a coloured disc in the head, its point
+/// landing on the seat in the middle of the piece.
 class TokenWidget extends StatefulWidget {
   final Token token;
   final double size;
@@ -38,7 +47,7 @@ class _TokenWidgetState extends State<TokenWidget>
       vsync: this,
       duration: const Duration(milliseconds: 760),
     );
-    _pulseScale = Tween<double>(begin: 1.0, end: 1.16).animate(
+    _pulseScale = Tween<double>(begin: 1.0, end: 1.12).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     if (widget.isMovable) {
@@ -73,203 +82,198 @@ class _TokenWidgetState extends State<TokenWidget>
 
   @override
   Widget build(BuildContext context) {
-    // Keep a comfortable minimum touch target even when the piece is small.
-    final hit = math.max(widget.size, 44.0);
+    final w = widget.size;
+    final h = w * kTokenPinAspect;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return GestureDetector(
-      onTap: _handleTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: hit,
-        height: hit,
-        child: Center(
+    // A comfortable minimum touch target, expanded outside the paint bounds so
+    // it never changes where the piece appears to sit.
+    final pad = (math.max(44.0, w) - w) / 2;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        SizedBox(
+          width: w,
+          height: h,
           child: AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
               return Transform.scale(
                 scale: widget.isMovable ? _pulseScale.value : 1.0,
                 child: CustomPaint(
-                  size: Size.square(widget.size),
-                  painter: _TokenPainter(
+                  size: Size(w, h),
+                  painter: _PinPainter(
                     color: widget.token.color,
                     isHome: widget.token.isHome,
                     number: widget.token.id + 1,
-                    glow: widget.isMovable ? 1.0 : 0.0,
-                    size: widget.size,
+                    size: w,
+                    selectable: widget.isMovable,
+                    shadow: isDark ? 0.34 : 0.22,
                   ),
                 ),
               );
             },
           ),
         ),
-      ),
+        Positioned(
+          left: -pad,
+          top: -pad,
+          right: -pad,
+          bottom: -pad,
+          child: GestureDetector(
+            onTap: _handleTap,
+            behavior: HitTestBehavior.opaque,
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _TokenPainter extends CustomPainter {
+class _PinPainter extends CustomPainter {
   final LudoColor color;
   final bool isHome;
   final int number;
-  final double glow;
-
-  /// Diameter of the piece, so the glyph scales with it.
   final double size;
+  final bool selectable;
+  final double shadow;
+  final bool showGlyph;
 
-  _TokenPainter({
+  _PinPainter({
     required this.color,
     required this.isHome,
     required this.number,
-    required this.glow,
     required this.size,
+    required this.selectable,
+    required this.shadow,
+    this.showGlyph = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final r = size.width / 2;
-    if (r <= 0) return;
-    final center = Offset(size.width / 2, size.height / 2);
+    final w = size.width;
+    final h = size.height;
 
-    // 1. Contact shadow on the board.
+    // Geometry of the marker. The head is a circle sitting above a short
+    // tapered point, matching the reference pieces.
+    final headR = w * 0.42;
+    final headCx = w / 2;
+    final headCy = h * kTokenHeadOffset;
+    final tipY = h * 0.98;
+    final shoulderY = headCy + headR * 0.30;
+
+    final head = Offset(headCx, headCy);
+
+    // Soft drop shadow under the whole marker.
     canvas.drawCircle(
-      center.translate(0, r * 0.14),
-      r * 0.96,
+      Offset(headCx, headCy + h * 0.05),
+      headR * 0.98,
       Paint()
-        ..color = Colors.black.withOpacity(0.42)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.20),
+        ..color = Colors.black.withOpacity(shadow)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.07),
     );
 
-    // 2. Movable halo.
-    if (glow > 0) {
+    if (selectable) {
       canvas.drawCircle(
-        center,
-        r * 1.10,
+        head,
+        headR * 1.30,
         Paint()
-          ..color = color.lightGlow.withOpacity(0.42 * glow)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.26),
+          ..color = color.primary.withOpacity(0.85)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.05),
       );
     }
 
-    // 3. Metallic rim, lit from the top-left.
-    canvas.drawCircle(
-      center,
-      r,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.45, -0.55),
-          radius: 1.05,
-          colors: const [
-            Color(0xFFFFFFFF),
-            Color(0xFFE2E8F0),
-            Color(0xFF94A3B8),
-            Color(0xFF475569),
-            Color(0xFFCBD5E1),
-          ],
-          stops: const [0.0, 0.30, 0.62, 0.88, 1.0],
-        ).createShader(Rect.fromCircle(center: center, radius: r)),
-    );
+    // Pin silhouette: circle head joined to a point.
+    final body = Path()
+      ..addOval(Rect.fromCircle(center: head, radius: headR))
+      ..moveTo(headCx - headR * 0.78, shoulderY)
+      ..lineTo(headCx, tipY)
+      ..lineTo(headCx + headR * 0.78, shoulderY)
+      ..close();
 
-    // 4. Domed face in the player colour.
-    final faceR = r * 0.80;
-    canvas.drawCircle(
-      center,
-      faceR,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.35, -0.45),
-          radius: 1.15,
-          colors: [
-            color.lightGlow,
-            color.primary,
-            color.darkShade,
-          ],
-          stops: const [0.0, 0.52, 1.0],
-        ).createShader(Rect.fromCircle(center: center, radius: faceR)),
-    );
 
-    // 5. Occlusion around the lower-right of the dome.
-    canvas.drawCircle(
-      center,
-      faceR,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(0.55, 0.65),
-          radius: 0.95,
-          colors: [
-            Colors.black.withOpacity(0.34),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 1.0],
-        ).createShader(Rect.fromCircle(center: center, radius: faceR)),
-    );
-
-    // 6. Bounce light along the bottom-right edge.
-    canvas.drawCircle(
-      center,
-      faceR,
+    // Light bevelled shell.
+    canvas.drawPath(
+      body,
       Paint()
         ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Colors.transparent, Colors.white.withOpacity(0.34)],
-          stops: const [0.45, 1.0],
-        ).createShader(Rect.fromCircle(center: center, radius: faceR))
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = r * 0.10,
+          colors: const [Color(0xFFFFFFFF), Color(0xFFE8EDF4), Color(0xFFB4BECC)],
+        ).createShader(Rect.fromLTWH(0, 0, w, h)),
     );
 
-    // 7. Specular hotspot.
+    // Subtle inner shade along the lower-right of the shell.
+    canvas.save();
+    canvas.clipPath(body);
     canvas.drawCircle(
-      center.translate(-faceR * 0.34, -faceR * 0.40),
-      faceR * 0.26,
+      Offset(headCx + w * 0.30, headCy + h * 0.30),
+      headR * 1.5,
+      Paint()..color = Colors.black.withOpacity(0.10),
+    );
+    canvas.restore();
+
+    // Outline.
+    canvas.drawPath(
+      body,
       Paint()
-        ..color = Colors.white.withOpacity(0.72)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, faceR * 0.12),
+        ..color = const Color(0xFF7C8899)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, w * 0.035),
     );
 
-    // 8. Glyph.
+    // Coloured disc in the head.
+    final discR = headR * 0.62;
+    canvas.drawCircle(head, discR, Paint()..color = color.primary);
+    canvas.drawCircle(
+      head.translate(0, -discR * 0.30),
+      discR * 0.62,
+      Paint()..color = color.lightGlow.withOpacity(0.45),
+    );
+    canvas.drawCircle(
+      head,
+      discR,
+      Paint()
+        ..color = const Color(0xFF3A3F4B)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, w * 0.030),
+    );
+
+    // Glyph.
     if (isHome) {
-      _paintStar(canvas, center, faceR * 0.62, const Color(0xFFFFD700));
-    } else {
-      _paintText(canvas, center, '$number');
+      _star(canvas, head, discR * 0.72, Paint()..color = Colors.white);
+    } else if (showGlyph) {
+      _text(canvas, head, '$number', discR);
     }
   }
 
-  void _paintText(Canvas canvas, Offset center, String value) {
+  void _text(Canvas canvas, Offset centre, String value, double discR) {
     final painter = TextPainter(
       text: TextSpan(
         text: value,
         style: TextStyle(
           color: Colors.white,
-          fontSize: size * 0.40,
+          fontSize: discR * 1.05,
           fontWeight: FontWeight.w900,
           height: 1.0,
-          letterSpacing: -0.5,
-          shadows: [
-            Shadow(
-              color: Colors.black.withOpacity(0.55),
-              blurRadius: 3,
-              offset: const Offset(0, 1.5),
-            ),
-          ],
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-
-    painter.paint(canvas, center - Offset(painter.width / 2, painter.height / 2));
+    painter.paint(canvas, centre - Offset(painter.width / 2, painter.height / 2));
   }
 
-  void _paintStar(Canvas canvas, Offset center, double outer, Color tint) {
+  void _star(Canvas canvas, Offset centre, double outer, Paint paint) {
     final inner = outer * 0.46;
     final path = Path();
     const points = 5;
     final step = math.pi / points;
     for (int i = 0; i < points * 2; i++) {
-      final radius = (i.isEven) ? outer : inner;
+      final rad = i.isEven ? outer : inner;
       final angle = i * step - math.pi / 2;
-      final x = center.dx + radius * math.cos(angle);
-      final y = center.dy + radius * math.sin(angle);
+      final x = centre.dx + rad * math.cos(angle);
+      final y = centre.dy + rad * math.sin(angle);
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -277,21 +281,50 @@ class _TokenPainter extends CustomPainter {
       }
     }
     path.close();
-
-    canvas.drawPath(
-      path.shift(const Offset(0, 1.2)),
-      Paint()
-        ..color = Colors.black.withOpacity(0.45)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
-    );
-    canvas.drawPath(path, Paint()..color = tint);
+    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _TokenPainter old) =>
+  bool shouldRepaint(covariant _PinPainter old) =>
       old.color != color ||
       old.isHome != isHome ||
       old.number != number ||
-      old.glow != glow ||
-      old.size != size;
+      old.size != size ||
+      old.selectable != selectable ||
+      old.showGlyph != showGlyph ||
+      old.shadow != shadow;
+}
+
+/// A small map-pin used as a player's avatar on the compact cards.
+class PinAvatar extends StatelessWidget {
+  final LudoColor color;
+  final double size;
+  final bool isDark;
+
+  const PinAvatar({
+    super.key,
+    required this.color,
+    required this.size,
+    this.isDark = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final w = size * 0.80;
+    return SizedBox(
+      width: w,
+      height: size,
+      child: CustomPaint(
+        painter: _PinPainter(
+          color: color,
+          isHome: false,
+          number: 0,
+          size: w,
+          selectable: false,
+          showGlyph: false,
+          shadow: isDark ? 0.34 : 0.20,
+        ),
+      ),
+    );
+  }
 }

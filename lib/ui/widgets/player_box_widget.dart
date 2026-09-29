@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/ludo_color.dart';
 import '../../models/player.dart';
 import '../../services/haptics_service.dart';
+import '../board/token_widget.dart';
 
 /// A premium player panel: avatar, name, live token progress and the player's
 /// own dice. Every player always shows a dice so each box reads as a complete,
@@ -192,161 +193,124 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
             height: widget.cardHeight,
-            padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             decoration: BoxDecoration(
-              // Neutral surface in both states; identity comes from the accent
-              // stripe and border, not a full-card colour wash.
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: widget.isDark
-                    ? [
-                        widget.isCurrentTurn
-                            ? Color.alphaBlend(color.primary.withOpacity(0.22), const Color(0xFF1B2740))
-                            : const Color(0xFF16203A),
-                        widget.isCurrentTurn
-                            ? Color.alphaBlend(color.primary.withOpacity(0.10), const Color(0xFF0E1626))
-                            : const Color(0xFF0D1424),
-                      ]
-                    : [
-                        widget.isCurrentTurn
-                            ? Color.alphaBlend(color.primary.withOpacity(0.14), Colors.white)
-                            : Colors.white,
-                        widget.isCurrentTurn
-                            ? Color.alphaBlend(color.primary.withOpacity(0.05), const Color(0xFFFAF6EE))
-                            : const Color(0xFFF6F1E8),
-                      ],
-              ),
-              borderRadius: BorderRadius.circular(18),
+              // Flat surface: identity comes from the stripe and outline,
+              // not a colour wash.
+              color: widget.isDark
+                  ? (widget.isCurrentTurn ? const Color(0xFF1B2942) : const Color(0xFF141E33))
+                  : (widget.isCurrentTurn ? Colors.white : const Color(0xFFF3EEE4)),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: widget.isCurrentTurn
-                    ? Color.alphaBlend(color.lightGlow, Colors.white).withOpacity(glow)
-                    : (widget.isDark ? const Color(0xFF25324B) : const Color(0xFFE4DCCC)),
-                width: widget.isCurrentTurn ? 2.2 : 1.1,
+                    ? color.primary
+                    : (widget.isDark ? const Color(0xFF32415E) : const Color(0xFFD8D1C2)),
+                width: widget.isCurrentTurn ? 2.6 : 1.2,
               ),
               boxShadow: [
-                if (widget.isCurrentTurn)
-                  BoxShadow(
-                    color: color.primary.withOpacity(0.50 * glow),
-                    blurRadius: 22,
-                    spreadRadius: 0.5,
-                    offset: const Offset(0, 5),
-                  )
-                else
-                  BoxShadow(
-                    color: Colors.black.withOpacity(widget.isDark ? 0.32 : 0.07),
-                    blurRadius: 7,
-                    offset: const Offset(0, 3),
-                  ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(widget.isDark ? 0.30 : 0.08),
+                  blurRadius: widget.isCurrentTurn ? 12 : 4,
+                  offset: const Offset(0, 2),
+                ),
               ],
             ),
             // Sizes are derived from the real inner box so the card can never
-            // overflow on narrow phones or in landscape.
+            // overflow on narrow phones.
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final availH = constraints.maxHeight;
-                final availW = constraints.maxWidth;
 
-                // Sizes are fractions of the real inner box, with the dice
-                // clamped to whatever is left over so the two rows can never
-                // overflow, and the block stays vertically centred so spare
-                // card height reads as padding rather than a void.
-                final gap = (availH * 0.05).clamp(4.0, 10.0).toDouble();
-                final avatarSize = (availH * 0.40).clamp(28.0, 64.0).toDouble();
-                final widthCap = availW * 0.46;
-                final diceMax = min(min(88.0, widthCap < 34.0 ? 34.0 : widthCap), availH - avatarSize - gap);
-                final diceSize = (availH * 0.55).clamp(34.0, diceMax).toDouble();
-                final dotSize = (diceSize * 0.15).clamp(8.0, 13.0).toDouble();
-                final nameSize = (availH * 0.18).clamp(12.0, 24.0).toDouble();
-                final stripe = (availH * 0.10).clamp(5.0, 11.0).toDouble();
+                final gap = (availH * 0.05).clamp(3.0, 7.0).toDouble();
+                final diceSize = (availH * 0.52).clamp(30.0, 54.0).toDouble();
+                final pinSize = (availH * 0.46).clamp(24.0, 42.0).toDouble();
+                final nameSize = (availH * 0.17).clamp(11.0, 17.0).toDouble();
+                final dotSize = (availH * 0.10).clamp(6.0, 11.0).toDouble();
 
-                return Row(
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Identity stripe
-                    Container(
-                      width: stripe,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(stripe / 2),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [color.lightGlow, color.primary, color.darkShade],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: color.primary.withOpacity(0.5),
-                            blurRadius: 6,
-                            offset: const Offset(0, 1),
+                    // Name row, full width so it never has to be truncated.
+                    SizedBox(
+                      height: nameSize * 1.25,
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.player.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: nameSize,
+                                height: 1.1,
+                                fontWeight: FontWeight.w900,
+                                color: widget.isDark
+                                    ? Colors.white
+                                    : const Color(0xFF111827),
+                              ),
+                            ),
                           ),
+                          if (isFinished) ...[
+                            const SizedBox(width: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _rankMedal(widget.player.finishRank ?? 1),
+                                style: TextStyle(
+                                  fontSize: max(8.0, nameSize * 0.60),
+                                  height: 1.1,
+                                ),
+                              ),
+                            ),
+                          ] else if (widget.isCurrentTurn) ...[
+                            const SizedBox(width: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'TURN',
+                                style: TextStyle(
+                                  fontSize: max(7.0, nameSize * 0.52),
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  height: 1.1,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
-                    SizedBox(width: gap * 1.5),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            children: [
-                              _buildAvatar(color, isFinished, avatarSize),
-                              SizedBox(width: gap * 1.2),
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        widget.player.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: nameSize,
-                                          height: 1.1,
-                                          fontWeight: FontWeight.w900,
-                                          color: widget.isDark
-                                              ? Colors.white
-                                              : const Color(0xFF0F172A),
-                                        ),
-                                      ),
-                                    ),
-                                    if (widget.isCurrentTurn) ...[
-                                      SizedBox(width: gap * 0.8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [color.lightGlow, color.primary],
-                                          ),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          'TURN',
-                                          style: TextStyle(
-                                            fontSize: max(8.0, nameSize * 0.46),
-                                            fontWeight: FontWeight.w900,
-                                            color: Colors.white,
-                                            height: 1.1,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Flexible(child: _buildTokenProgress(color, dotSize)),
-                              _buildDice(color, diceSize, glow),
-                            ],
-                          ),
-                        ],
-                      ),
+                    SizedBox(height: gap),
+                    // Pin avatar, piece progress and the dice.
+                    Row(
+                      children: [
+                        PinAvatar(
+                          color: color,
+                          size: pinSize,
+                          isDark: widget.isDark,
+                        ),
+                        SizedBox(width: gap * 1.6),
+                        Expanded(
+                          child: _buildTokenProgress(color, dotSize),
+                        ),
+                        SizedBox(width: gap),
+                        _buildDice(color, diceSize, glow),
+                      ],
                     ),
                   ],
                 );
@@ -355,52 +319,6 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
           ),
         );
       },
-    );
-  }
-
-  Widget _buildAvatar(LudoColor color, bool isFinished, double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color.lightGlow, color.primary, color.darkShade],
-          center: const Alignment(-0.2, -0.25),
-          radius: 0.9,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: color.primary.withOpacity(0.55),
-            blurRadius: size * 0.22,
-            offset: Offset(0, size * 0.06),
-          ),
-        ],
-        border: Border.all(
-          color: widget.isCurrentTurn ? const Color(0xFFFFD700) : Colors.white70,
-          width: widget.isCurrentTurn ? 2.6 : 1.8,
-        ),
-      ),
-      child: Center(
-        child: isFinished
-            ? Text(
-                _rankMedal(widget.player.finishRank ?? 1),
-                style: TextStyle(fontSize: size * 0.5),
-              )
-            : Text(
-                widget.player.name.isNotEmpty
-                    ? widget.player.name.substring(0, 1).toUpperCase()
-                    : 'P',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: size * 0.44,
-                  shadows: const [
-                    Shadow(color: Colors.black54, blurRadius: 3, offset: Offset(0, 1)),
-                  ],
-                ),
-              ),
-      ),
     );
   }
 
@@ -417,42 +335,37 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
     }
   }
 
+  /// Four segments that share the available width, so the progress readout can
+  /// never overflow the card however narrow it gets.
   Widget _buildTokenProgress(LudoColor color, double dotSize) {
-    final tokens = widget.player.tokens;
     return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: tokens.map((t) {
-        Color dotColor;
+      children: widget.player.tokens.map((t) {
+        Color fill;
         IconData? icon;
 
         if (t.isHome) {
-          dotColor = const Color(0xFFFFD700);
+          fill = const Color(0xFFFFD43B);
           icon = Icons.star_rounded;
         } else if (t.isInBase) {
-          dotColor = widget.isDark ? const Color(0xFF3B4A63) : const Color(0xFFCBD5E1);
+          fill = widget.isDark ? const Color(0xFF39465E) : const Color(0xFFC8CFD9);
         } else {
-          dotColor = color.primary;
+          fill = color.primary;
         }
 
-        return Container(
-          margin: EdgeInsets.only(right: dotSize * 0.34),
-          width: dotSize,
-          height: dotSize,
-          decoration: BoxDecoration(
-            color: dotColor,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: t.isInBase
-                  ? (widget.isDark ? Colors.white24 : Colors.black12)
-                  : Colors.white70,
-              width: 0.8,
+        return Expanded(
+          child: Container(
+            margin: EdgeInsets.only(right: dotSize * 0.30),
+            height: dotSize,
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(dotSize * 0.5),
             ),
+            child: icon == null
+                ? null
+                : Center(
+                    child: Icon(icon, size: dotSize * 0.72, color: Colors.black87),
+                  ),
           ),
-          child: icon != null
-              ? Center(
-                  child: Icon(icon, size: dotSize * 0.7, color: Colors.black87),
-                )
-              : null,
         );
       }).toList(),
     );
@@ -460,7 +373,7 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
 
   Widget _buildDice(LudoColor color, double size, double glow) {
     final isActive = widget.isCurrentTurn;
-    final rollable = isActive && widget.canRoll;
+
 
     return AnimatedBuilder(
       animation: _diceRollController,
@@ -482,54 +395,32 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
               width: size,
               height: size,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(size * 0.26),
-                gradient: LinearGradient(
-                  colors: isActive
-                      ? const [Colors.white, Color(0xFFF8FAFC), Color(0xFFDCE3EE)]
-                      : [
-                          widget.isDark ? const Color(0xFF3A4A68) : const Color(0xFFEFF2F6),
-                          widget.isDark ? const Color(0xFF212C42) : const Color(0xFFD2D9E4),
-                        ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                borderRadius: BorderRadius.circular(size * 0.22),
+                color: isActive
+                    ? Colors.white
+                    : (widget.isDark ? const Color(0xFFC3CBD8) : const Color(0xFFDCE1E9)),
                 border: Border.all(
                   color: isActive
-                      ? (rollable
-                          ? Color.lerp(
-                              color.primary,
-                              const Color(0xFFFFD700),
-                              glow,
-                            )!
-                          : color.primary)
-                      : (widget.isDark ? const Color(0xFF55688C) : const Color(0xFF8C99AC)),
-                  width: isActive ? (rollable ? 2.2 + glow * 1.6 : 2.2) : 1.4,
+                      ? color.primary
+                      : (widget.isDark ? const Color(0xFF5C6E8E) : const Color(0xFF9AA4B4)),
+                  width: isActive ? 2.6 : 1.6,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: isActive
-                        ? (rollable
-                            ? Color.lerp(
-                                color.primary.withOpacity(0.40),
-                                const Color(0xFFFFD700).withOpacity(0.75),
-                                glow,
-                              )!
-                            : color.primary.withOpacity(0.42))
-                        : Colors.black.withOpacity(widget.isDark ? 0.30 : 0.14),
-                    blurRadius: isActive ? size * (0.18 + 0.16 * glow) : 5,
-                    spreadRadius: isActive && rollable ? glow * 1.5 : 0,
-                    offset: Offset(0, size * 0.06),
+                    color: Colors.black.withOpacity(widget.isDark ? 0.32 : 0.14),
+                    blurRadius: 3,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: Padding(
-                padding: EdgeInsets.all(size * 0.18),
+                padding: EdgeInsets.all(size * 0.20),
                 child: _renderPips(
                   _displayDice,
                   isActive
-                      ? (widget.isDark ? const Color(0xFF0B1220) : const Color(0xFF1E293B))
-                      : (widget.isDark ? const Color(0xFFD3DCEB) : const Color(0xFF5A6879)),
-                  size * 0.17,
+                      ? (widget.isDark ? const Color(0xFF16233B) : const Color(0xFF1F2937))
+                      : const Color(0xFF5A6473),
+                  size * 0.18,
                 ),
               ),
             ),
