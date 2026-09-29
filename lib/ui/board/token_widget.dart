@@ -6,17 +6,13 @@ import '../../models/ludo_color.dart';
 import '../../models/token.dart';
 import '../../services/haptics_service.dart';
 
-/// Geometry helpers used by the board to anchor orbs on squares.
-const double kTokenPinAspect = 1.0;
-const double kTokenHeadOffset = 0.5;
-
-/// Large 3D glossy orb — completely different from the old map-pin.
+/// Large 3D glossy pawn (§9) — a real game-piece silhouette, not a circle.
 ///
-/// * Diameter fills ~96% of a track cell, 48dp minimum tap target.
-/// * Radial orb gradient + white specular + bottom bounce-light.
-/// * Color-blind double-coding: unique emblem glyph (▲ ● ★ ■) watermarked
-///   behind the token number, plus staggered luminance per color.
-/// * Movable tokens get a pulsing golden halo + gentle bounce.
+/// * Classic pawn profile: round head, tapered body, stepped base.
+/// * Vertical gloss gradient + top-left specular + soft ground shadow.
+/// * Color-blind double-coding: a unique emblem glyph (▲ ● ★ ■) baked onto
+///   the body, plus staggered luminance per color.
+/// * Movable pawns get a pulsing golden halo + gentle bounce.
 class TokenWidget extends StatefulWidget {
   final Token token;
   final double size;
@@ -65,7 +61,7 @@ class _TokenWidgetState extends State<TokenWidget>
       vsync: this,
       duration: const Duration(milliseconds: 720),
     );
-    _pulseScale = Tween<double>(begin: 1.0, end: 1.14).animate(
+    _pulseScale = Tween<double>(begin: 1.0, end: 1.12).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     if (widget.isMovable) _startPulse();
@@ -121,12 +117,12 @@ class _TokenWidgetState extends State<TokenWidget>
                   height: w,
                   child: CustomPaint(
                     size: Size(w, w),
-                    painter: _OrbPainter(
+                    painter: _PawnPainter(
                       color: widget.token.color,
                       isHome: widget.token.isHome,
                       number: widget.token.id + 1,
                       selectable: widget.isMovable,
-                      shadow: isDark ? 0.42 : 0.28,
+                      shadow: isDark ? 0.42 : 0.30,
                     ),
                   ),
                 ),
@@ -149,14 +145,14 @@ class _TokenWidgetState extends State<TokenWidget>
   }
 }
 
-class _OrbPainter extends CustomPainter {
+class _PawnPainter extends CustomPainter {
   final LudoColor color;
   final bool isHome;
   final int number;
   final bool selectable;
   final double shadow;
 
-  _OrbPainter({
+  _PawnPainter({
     required this.color,
     required this.isHome,
     required this.number,
@@ -167,136 +163,190 @@ class _OrbPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
-    final c = Offset(w / 2, w / 2);
-    final r = w / 2;
+    final cx = w / 2;
 
-    // Drop shadow.
-    canvas.drawCircle(
-      c + Offset(0, w * 0.07),
-      r * 0.94,
+    // Soft ground shadow.
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(cx, w * 0.90),
+        width: w * 0.66,
+        height: w * 0.15,
+      ),
       Paint()
         ..color = Colors.black.withOpacity(shadow)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.08),
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.06),
     );
 
     // Selectable golden halo.
     if (selectable) {
-      canvas.drawCircle(
-        c,
-        r * 1.18,
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(cx, w * 0.50),
+            width: w * 1.18,
+            height: w * 1.22),
         Paint()
-          ..color = const Color(0xFFF2C14E).withOpacity(0.85)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.07),
+          ..color = const Color(0xFFF2C14E).withOpacity(0.55)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.08),
       );
-      canvas.drawCircle(
-        c,
-        r * 1.06,
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(cx, w * 0.50),
+            width: w * 1.02,
+            height: w * 1.06),
         Paint()
           ..color = Colors.white.withOpacity(0.85)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(2.0, w * 0.06),
+          ..strokeWidth = math.max(2.0, w * 0.05),
       );
     }
 
-    // Orb body: radial 3D gradient.
-    canvas.drawCircle(
-      c,
-      r * 0.96,
-      Paint()..shader = color.orbGradient.createShader(
-        Rect.fromCircle(center: c, radius: r),
-      ),
+    // Body: tapered pawn torso with rounded shoulders.
+    final body = Path()
+      ..moveTo(cx - w * 0.30, w * 0.86)
+      ..lineTo(cx - w * 0.155, w * 0.46)
+      ..quadraticBezierTo(
+          cx - w * 0.14, w * 0.40, cx - w * 0.10, w * 0.385)
+      ..lineTo(cx + w * 0.10, w * 0.385)
+      ..quadraticBezierTo(
+          cx + w * 0.14, w * 0.40, cx + w * 0.155, w * 0.46)
+      ..lineTo(cx + w * 0.30, w * 0.86)
+      ..quadraticBezierTo(cx, w * 0.92, cx - w * 0.30, w * 0.86)
+      ..close();
+    canvas.drawPath(
+      body,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [color.lightGlow, color.primary, color.darkShade],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ).createShader(body.getBounds()),
     );
-    // Inner depth: darken lower-right crescent.
+    // Belly shading (lower crescent) for roundness.
     canvas.save();
-    canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: r * 0.96)));
-    canvas.drawCircle(
-      c + Offset(r * 0.42, r * 0.46),
-      r * 1.05,
-      Paint()..color = Colors.black.withOpacity(0.22),
+    canvas.clipPath(body);
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(cx + w * 0.10, w * 0.86),
+          width: w * 0.62,
+          height: w * 0.50),
+      Paint()..color = Colors.black.withOpacity(0.20),
+    );
+    // Gloss stripe down the left of the torso.
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(cx - w * 0.13, w * 0.62),
+          width: w * 0.10,
+          height: w * 0.30),
+      Paint()..color = Colors.white.withOpacity(0.45),
     );
     canvas.restore();
-
     // Crisp rim.
-    canvas.drawCircle(
-      c,
-      r * 0.96,
+    canvas.drawPath(
+      body,
       Paint()
         ..color = color.darkShade
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.6, w * 0.055),
+        ..strokeWidth = math.max(1.6, w * 0.045),
+    );
+
+    // Collar ring under the head.
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(cx, w * 0.40), width: w * 0.30, height: w * 0.10),
+      Paint()..color = color.darkShade,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(cx, w * 0.392),
+          width: w * 0.30,
+          height: w * 0.085),
+      Paint()..color = color.lightGlow,
+    );
+
+    // Head: glossy ball.
+    final headC = Offset(cx, w * 0.245);
+    final headR = w * 0.155;
+    canvas.drawCircle(
+      headC,
+      headR,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [color.orbHighlight, color.primary, color.darkShade],
+          stops: const [0.0, 0.5, 1.0],
+          center: const Alignment(-0.35, -0.4),
+          radius: 1.1,
+        ).createShader(Rect.fromCircle(center: headC, radius: headR)),
     );
     canvas.drawCircle(
-      c,
-      r * 0.88,
+      headC,
+      headR,
+      Paint()
+        ..color = color.darkShade
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.4, w * 0.04),
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: headC + Offset(-headR * 0.32, -headR * 0.38),
+        width: headR * 0.85,
+        height: headR * 0.55,
+      ),
+      Paint()..color = Colors.white.withOpacity(0.8),
+    );
+
+    // Stepped base.
+    final base = RRect.fromRectAndRadius(
+      Rect.fromLTWH(cx - w * 0.30, w * 0.82, w * 0.60, w * 0.10),
+      Radius.circular(w * 0.05),
+    );
+    canvas.drawRRect(
+      base,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [color.primary, color.darkShade],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ).createShader(base.outerRect),
+    );
+    canvas.drawRRect(
+      base,
       Paint()
         ..color = Colors.white.withOpacity(0.35)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.0, w * 0.03),
+        ..strokeWidth = math.max(1.0, w * 0.025),
     );
 
-    // Specular highlight (top-left gloss).
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: c + Offset(-r * 0.34, -r * 0.40),
-        width: r * 0.95,
-        height: r * 0.62,
-      ),
-      Paint()..color = Colors.white.withOpacity(0.75),
-    );
-    canvas.drawCircle(
-      c + Offset(-r * 0.42, -r * 0.46),
-      r * 0.14,
-      Paint()..color = Colors.white.withOpacity(0.95),
-    );
-
-    // Shape-coded emblem watermark (color-blind aid).
+    // Shape-coded emblem on the belly (color-blind aid).
     _emblemText(
-      canvas, c + Offset(0, -r * 0.06), color.emblemGlyph, r * 1.15,
-      Colors.white.withOpacity(0.30),
+      canvas,
+      Offset(cx, w * 0.60),
+      color.emblemGlyph,
+      w * 0.20,
+      Colors.white.withOpacity(0.92),
     );
 
     if (number == 0) {
-      // Avatar mode: show the shape emblem boldly.
-      _emblemText(canvas, c, color.emblemGlyph, r * 0.95, Colors.white);
+      // Avatar mode: bold emblem, nothing else.
+      _emblemText(canvas, Offset(cx, w * 0.62), color.emblemGlyph,
+          w * 0.30, Colors.white);
     } else if (isHome) {
-      _star(canvas, c, r * 0.52, Paint()..color = Colors.white);
-      _star(canvas, c, r * 0.38, Paint()..color = color.darkShade);
+      _star(canvas, Offset(cx, w * 0.74), w * 0.10,
+          Paint()..color = Colors.white);
     } else {
-      // Token number — big, readable from across the table.
-      _number(canvas, c, '$number', r);
+      _number(canvas, Offset(cx, w * 0.755), '$number', w);
     }
   }
 
-  void _number(Canvas canvas, Offset centre, String value, double r) {
-    // Dark outline for legibility on amber.
-    final outline = TextPainter(
-      text: TextSpan(
-        text: value,
-        style: TextStyle(
-          color: color.darkShade,
-          fontSize: r * 0.95,
-          fontWeight: FontWeight.w900,
-          height: 1.0,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    // Stroke via multiple offsets (cheap outline).
-    for (final o in [
-      const Offset(1.5, 0), const Offset(-1.5, 0),
-      const Offset(0, 1.5), const Offset(0, -1.5),
-    ]) {
-      outline.paint(canvas, centre - Offset(outline.width / 2, outline.height / 2) + o);
-    }
+  void _number(Canvas canvas, Offset centre, String value, double w) {
     final face = TextPainter(
       text: TextSpan(
         text: value,
         style: TextStyle(
           color: Colors.white,
-          fontSize: r * 0.95,
+          fontSize: w * 0.15,
           fontWeight: FontWeight.w900,
           height: 1.0,
-          shadows: const [Shadow(color: Colors.black45, blurRadius: 3)],
+          shadows: const [Shadow(color: Colors.black54, blurRadius: 3)],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -304,11 +354,17 @@ class _OrbPainter extends CustomPainter {
     face.paint(canvas, centre - Offset(face.width / 2, face.height / 2));
   }
 
-  void _emblemText(Canvas canvas, Offset centre, String glyph, double fontSize, Color col) {
+  void _emblemText(
+      Canvas canvas, Offset centre, String glyph, double fontSize, Color col) {
     final tp = TextPainter(
       text: TextSpan(
         text: glyph,
-        style: TextStyle(color: col, fontSize: fontSize, fontWeight: FontWeight.w900, height: 1.0),
+        style: TextStyle(
+            color: col,
+            fontSize: fontSize,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
+            shadows: const [Shadow(color: Colors.black38, blurRadius: 2)]),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -336,14 +392,14 @@ class _OrbPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _OrbPainter old) =>
+  bool shouldRepaint(covariant _PawnPainter old) =>
       old.color != color ||
       old.isHome != isHome ||
       old.number != number ||
       old.selectable != selectable;
 }
 
-/// Compact orb avatar for player cards.
+/// Compact pawn avatar for player cards.
 class PinAvatar extends StatelessWidget {
   final LudoColor color;
   final double size;
@@ -362,7 +418,7 @@ class PinAvatar extends StatelessWidget {
       width: size,
       height: size,
       child: CustomPaint(
-        painter: _OrbPainter(
+        painter: _PawnPainter(
           color: color,
           isHome: false,
           number: 0,

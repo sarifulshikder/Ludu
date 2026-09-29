@@ -33,6 +33,26 @@ class Token {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'color': color.index,
+        'step': step,
+      };
+
+  factory Token.fromJson(Map<String, dynamic> json, LudoColor fallback) {
+    final colorIndex = json['color'] as int?;
+    final color = (colorIndex != null &&
+            colorIndex >= 0 &&
+            colorIndex < LudoColor.values.length)
+        ? LudoColor.values[colorIndex]
+        : fallback;
+    return Token(
+      id: (json['id'] as int?) ?? 0,
+      color: color,
+      step: (json['step'] as int?) ?? -1,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

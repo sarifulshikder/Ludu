@@ -10,6 +10,11 @@ class BoardPoint {
   Offset toOffset(double tileSize) {
     return Offset(col * tileSize + tileSize / 2, row * tileSize + tileSize / 2);
   }
+
+  /// Cell center on a tall board with independent column/row pitch (§8).
+  Offset toOffsetXY(double tileW, double tileH) {
+    return Offset(col * tileW + tileW / 2, row * tileH + tileH / 2);
+  }
 }
 
 class BoardCoordinates {

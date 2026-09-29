@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ludu/core/board_coordinates.dart';
+import 'package:ludu/models/game_settings.dart';
 import 'package:ludu/models/game_state.dart';
-import 'package:ludu/models/token.dart';
+import 'package:ludu/models/ludo_color.dart';
+import 'package:ludu/models/player.dart';
 import 'package:ludu/services/dice_service.dart';
+import 'package:ludu/services/persistence.dart';
 import 'package:ludu/state/game_controller.dart';
 
 class ScriptedDiceService implements DiceService {
@@ -19,345 +22,606 @@ class ScriptedDiceService implements DiceService {
   }
 }
 
+/// Fresh controller with scripted dice and in-memory persistence.
+GameController newGame(
+  List<int> script, {
+  int players = 2,
+  int first = 0,
+  GameSettings? settings,
+  List<String>? names,
+}) {
+  final controller = GameController(
+    diceService: ScriptedDiceService(script),
+    persistence: MemoryPersistence(),
+  );
+  if (settings != null) controller.setSettings(settings);
+  controller.startNewGame(
+    playerCount: players,
+    playerNames: names,
+    firstPlayerIndex: first,
+  );
+  return controller;
+}
+
+/// Sets token steps for one player, leaving everyone else untouched.
+void setSteps(GameController c, int playerIdx, List<int> steps) {
+  assert(steps.length == 4);
+  final players = List<Player>.from(c.state.players);
+  final p = players[playerIdx];
+  players[playerIdx] = p.copyWith(
+    tokens: List.generate(
+        4, (i) => p.tokens[i].copyWith(step: steps[i])),
+  );
+  c.state = c.state.copyWith(players: players);
+}
+
+/// Moves the state back to [playerIdx] with a cleared dice (test helper).
+void backTo(GameController c, int playerIdx) {
+  c.state = c.state.copyWith(
+    currentPlayerIndex: playerIdx,
+    clearDiceRoll: true,
+    movableTokenIds: const [],
+  );
+}
+
 void main() {
-  group('Ludo Game Rules Unit Tests', () {
-    test('Rolling a 6 allows bringing a token out of base to step 0', () {
-      final controller = GameController(diceService: ScriptedDiceService([6]));
-      controller.startNewGame(playerCount: 2);
-
-      expect(controller.state.currentPlayer.tokens.every((t) => t.isInBase), isTrue);
-
-      controller.rollDice();
-      expect(controller.state.currentDiceRoll, equals(6));
-      expect(controller.state.movableTokenIds, equals([0, 1, 2, 3]));
-
-      controller.moveToken(0);
-      expect(controller.state.players[0].tokens[0].step, equals(0));
-      // Rolling a 6 grants an extra turn, so player 0 is still current player
-      expect(controller.state.currentPlayerIndex, equals(0));
-    });
-
-    test('Rolling non-6 cannot bring a token out of base and auto-passes turn', () {
-      final controller = GameController(diceService: ScriptedDiceService([4]));
-      controller.startNewGame(playerCount: 2);
-
-      // Player 0 rolls 4 with all tokens in base
-      controller.rollDice();
-
-      // No tokens can move, so turn auto-advances to Player 1
-      expect(controller.state.currentPlayerIndex, equals(1));
-    });
-
-    test('Exact roll required to reach Home (no overshoot)', () {
-      final controller = GameController(diceService: ScriptedDiceService([4, 2]));
-      controller.startNewGame(playerCount: 2);
-
-      // Place token at step 54 (needs exactly 2 to reach step 56)
-      final player0 = controller.state.players[0];
-      final updatedTokens = List<Token>.from(player0.tokens);
-      updatedTokens[0] = updatedTokens[0].copyWith(step: 54);
-      controller.state = controller.state.copyWith(
-        players: [player0.copyWith(tokens: updatedTokens), controller.state.players[1]],
-      );
-
-      // Roll 4 -> overshoot (54 + 4 = 58 > 56)
-      controller.rollDice();
-      // Token 0 cannot move with a 4
-      expect(controller.state.movableTokenIds.contains(0), isFalse);
-
-      // Roll 2 -> exact (54 + 2 = 56)
-      // Switch back to player 0 for test
-      controller.state = controller.state.copyWith(currentPlayerIndex: 0, clearDiceRoll: true);
-      controller.rollDice();
-      expect(controller.state.movableTokenIds.contains(0), isTrue);
-
-      controller.moveToken(0);
-      expect(controller.state.players[0].tokens[0].isHome, isTrue);
-      expect(controller.state.players[0].tokens[0].step, equals(56));
-    });
-
-    test('Capture on normal square sends opponent token back to base', () {
-      final controller = GameController(diceService: ScriptedDiceService([3]));
-      controller.startNewGame(playerCount: 2);
-
-      // Setup:
-      // Player 0 has token at step 1 (outer track global square 1, which is not safe)
-      // Player 1 has token at step 0 (outer track global square 26 for Yellow)
-      // Let's place Player 1 token at global square 4 (step 4 for Player 0)
-      // Player 0 start is square 0. Step 1 + 3 = 4. Square 4 is NOT a safe square.
-      // Player 1 (Yellow) start is square 26. Global square 4 corresponds to Yellow step 30 ((26 + 30) % 52 = 4).
-      final p0 = controller.state.players[0];
-      final p1 = controller.state.players[1];
-
-      final p0Tokens = List<Token>.from(p0.tokens);
-      p0Tokens[0] = p0Tokens[0].copyWith(step: 1); // will move to step 4 (global square 4)
-
-      final p1Tokens = List<Token>.from(p1.tokens);
-      p1Tokens[0] = p1Tokens[0].copyWith(step: 30); // is at global square (26 + 30) % 52 = 4
-
-      controller.state = controller.state.copyWith(
-        players: [p0.copyWith(tokens: p0Tokens), p1.copyWith(tokens: p1Tokens)],
-        currentPlayerIndex: 0,
-      );
-
-      expect(BoardCoordinates.isSafeSquare(4), isFalse);
-
-      controller.rollDice(); // rolls 3
-      controller.moveToken(0);
-
-      // Player 0 token moved to step 4
-      expect(controller.state.players[0].tokens[0].step, equals(4));
-      // Player 1 opponent token was captured and sent to base (-1)
-      expect(controller.state.players[1].tokens[0].step, equals(-1));
-      expect(controller.state.totalCaptures, equals(1));
-    });
-
-    test('Opponent token on safe star square CANNOT be captured', () {
-      final controller = GameController(diceService: ScriptedDiceService([2]));
-      controller.startNewGame(playerCount: 2);
-
-      // Safe square 8 (Red zone safe star)
-      // Player 0 is at step 6 (global square 6). Rolls 2 -> lands on step 8 (global square 8).
-      // Player 1 has token at global square 8.
-      // Yellow start is 26. (26 + 34) % 52 = 8.
-      final p0 = controller.state.players[0];
-      final p1 = controller.state.players[1];
-
-      final p0Tokens = List<Token>.from(p0.tokens);
-      p0Tokens[0] = p0Tokens[0].copyWith(step: 6);
-
-      final p1Tokens = List<Token>.from(p1.tokens);
-      p1Tokens[0] = p1Tokens[0].copyWith(step: 34); // global 8
-
-      controller.state = controller.state.copyWith(
-        players: [p0.copyWith(tokens: p0Tokens), p1.copyWith(tokens: p1Tokens)],
-        currentPlayerIndex: 0,
-      );
-
-      expect(BoardCoordinates.isSafeSquare(8), isTrue);
-
-      controller.rollDice(); // rolls 2
-      controller.moveToken(0);
-
-      // Player 0 lands on square 8
-      expect(controller.state.players[0].tokens[0].step, equals(8));
-      // Player 1 is NOT captured because square 8 is safe!
-      expect(controller.state.players[1].tokens[0].step, equals(34));
-      expect(controller.state.totalCaptures, equals(0));
-    });
-
-    test('Three consecutive 6s cancels third move and passes turn to next player', () {
-      final controller = GameController(diceService: ScriptedDiceService([6, 6, 6]));
-      controller.startNewGame(playerCount: 2);
-
-      expect(controller.state.currentPlayerIndex, equals(0));
-
-      // 1st six
-      controller.rollDice();
-      expect(controller.state.consecutiveSixes, equals(1));
-      controller.moveToken(0); // exits to step 0
-      expect(controller.state.currentPlayerIndex, equals(0)); // extra turn
-
-      // 2nd six
-      controller.rollDice();
-      expect(controller.state.consecutiveSixes, equals(2));
-      controller.moveToken(0); // moves to step 6
-      expect(controller.state.currentPlayerIndex, equals(0)); // extra turn
-
-      // 3rd six
-      controller.rollDice();
-      // On 3rd six, rule cancels move and advances turn to Player 1 immediately
-      expect(controller.state.consecutiveSixes, equals(0));
-      expect(controller.state.currentPlayerIndex, equals(1));
-    });
-
-    test('Explicit undo of third 6 reverts token position and restores captures', () {
-      final controller = GameController();
-      controller.startNewGame(playerCount: 2);
-
-      final p0 = controller.state.players[0];
-      final p1 = controller.state.players[1];
-
-      // Simulate a state where Player 0 token moved from step 0 to step 6 on 3rd six,
-      // capturing Player 1 token at global square 6
-      final tokenSnapshot = p0.tokens[0].copyWith(step: 0);
-      final capturedSnapshot = p1.tokens[0].copyWith(step: 32); // global 6
-
-      controller.state = controller.state.copyWith(
-        players: [
-          p0.copyWith(tokens: [p0.tokens[0].copyWith(step: 6), p0.tokens[1], p0.tokens[2], p0.tokens[3]]),
-          p1.copyWith(tokens: [p1.tokens[0].copyWith(step: -1), p1.tokens[1], p1.tokens[2], p1.tokens[3]]),
-        ],
-        currentPlayerIndex: 0,
-        lastMovedTokenSnapshot: tokenSnapshot,
-        lastMovedPlayerIndex: 0,
-        lastCapturedTokensSnapshot: [capturedSnapshot],
-        consecutiveSixes: 3,
-      );
-
-      controller.undoThirdSixMove();
-
-      // P0 token reverted to step 0
-      expect(controller.state.players[0].tokens[0].step, equals(0));
-      // P1 token restored to step 32
-      expect(controller.state.players[1].tokens[0].step, equals(32));
-      // Turn passed to player 1
-      expect(controller.state.currentPlayerIndex, equals(1));
-    });
-
-    test('First player to bring all 4 home wins immediately (§6)', () {
-      final controller = GameController(
-          diceService: ScriptedDiceService([2]));
-      controller.startNewGame(playerCount: 3);
-
-      // Player 0 has 3 home + 1 at step 54 (needs exact 2).
-      final p0 = controller.state.players[0];
-      final p0Tokens = List<Token>.from(p0.tokens);
-      for (int i = 0; i < 3; i++) {
-        p0Tokens[i] = p0Tokens[i].copyWith(step: 56);
+  // ------------------------------------------------------------------ §1
+  group('Setup (§1)', () {
+    test('2 to 4 players start with 4 tokens each, all in base', () {
+      for (final count in [2, 3, 4]) {
+        final c = newGame([1], players: count);
+        expect(c.state.players.length, equals(count));
+        for (final p in c.state.players) {
+          expect(p.tokens.length, equals(4));
+          expect(p.tokens.every((t) => t.isInBase), isTrue);
+          expect(p.finishRank, isNull);
+        }
+        expect(c.state.phase, equals(GamePhase.playing));
       }
-      p0Tokens[3] = p0Tokens[3].copyWith(step: 54);
-      controller.state = controller.state.copyWith(
-        players: [
-          p0.copyWith(tokens: p0Tokens),
-          controller.state.players[1],
-          controller.state.players[2]
-        ],
-        currentPlayerIndex: 0,
-      );
-
-      controller.rollDice(); // rolls 2
-      expect(controller.state.movableTokenIds.contains(3), isTrue);
-      controller.moveToken(3);
-
-      expect(controller.state.players[0].tokens.every((t) => t.isHome),
-          isTrue);
-      expect(controller.state.phase, equals(GamePhase.finished));
-      expect(controller.state.finishOrder.length, equals(1));
-      expect(controller.state.finishOrder.first.name,
-          equals(controller.state.players[0].name));
     });
 
-    test('Capture grants an extra turn even without a 6 (§4)', () {
-      final controller = GameController(diceService: ScriptedDiceService([3]));
-      controller.startNewGame(playerCount: 2);
-
-      final p0 = controller.state.players[0];
-      final p1 = controller.state.players[1];
-      final p0Tokens = List<Token>.from(p0.tokens);
-      p0Tokens[0] = p0Tokens[0].copyWith(step: 1);
-      final p1Tokens = List<Token>.from(p1.tokens);
-      p1Tokens[0] = p1Tokens[0].copyWith(step: 30); // global 4
-
-      controller.state = controller.state.copyWith(
-        players: [p0.copyWith(tokens: p0Tokens), p1.copyWith(tokens: p1Tokens)],
-        currentPlayerIndex: 0,
-      );
-
-      controller.rollDice(); // 3
-      controller.moveToken(0);
-
-      expect(controller.state.players[1].tokens[0].step, equals(-1));
-      // Extra turn: still player 0.
-      expect(controller.state.currentPlayerIndex, equals(0));
-      expect(controller.state.currentDiceRoll, isNull);
-    });
-
-    test('Reaching home grants an extra turn even without a 6 (§4)', () {
-      final controller = GameController(diceService: ScriptedDiceService([2]));
-      controller.startNewGame(playerCount: 2);
-
-      final p0 = controller.state.players[0];
-      final p0Tokens = List<Token>.from(p0.tokens);
-      p0Tokens[0] = p0Tokens[0].copyWith(step: 54);
-      p0Tokens[1] = p0Tokens[1].copyWith(step: 10);
-      controller.state = controller.state.copyWith(
-        players: [p0.copyWith(tokens: p0Tokens), controller.state.players[1]],
-        currentPlayerIndex: 0,
-      );
-
-      controller.rollDice(); // 2
-      controller.moveToken(0);
-
-      expect(controller.state.players[0].tokens[0].step, equals(56));
-      expect(controller.state.phase, equals(GamePhase.playing));
-      expect(controller.state.currentPlayerIndex, equals(0));
-    });
-
-    test('Team 2v2 assigns left/right columns as partner teams', () {
-      final controller = GameController();
-      controller.startNewGame(playerCount: 4, teamMode: true);
-
-      expect(controller.state.teamMode, isTrue);
-      final teams =
-          controller.state.players.map((p) => p.teamId).toList();
-      expect(teams, equals([0, 1, 0, 1]));
-    });
-
-    test('Teammates cannot capture each other (stack safely)', () {
-      final controller = GameController(diceService: ScriptedDiceService([3]));
-      controller.startNewGame(playerCount: 4, teamMode: true);
-
-      // Player 0 (red, team A) token at step 1 -> moves to step 4 (global 4).
-      // Player 2 (yellow, team A) token parked on global 4 ((26+30)%52).
-      final p0 = controller.state.players[0];
-      final p2 = controller.state.players[2];
-      final p0Tokens = List<Token>.from(p0.tokens);
-      p0Tokens[0] = p0Tokens[0].copyWith(step: 1);
-      final p2Tokens = List<Token>.from(p2.tokens);
-      p2Tokens[0] = p2Tokens[0].copyWith(step: 30);
-
-      controller.state = controller.state.copyWith(
-        players: [
-          p0.copyWith(tokens: p0Tokens),
-          controller.state.players[1],
-          p2.copyWith(tokens: p2Tokens),
-          controller.state.players[3],
-        ],
-        currentPlayerIndex: 0,
-      );
-
-      controller.rollDice(); // 3
-      controller.moveToken(0);
-
-      expect(controller.state.players[0].tokens[0].step, equals(4));
-      // Partner untouched.
-      expect(controller.state.players[2].tokens[0].step, equals(30));
-      expect(controller.state.totalCaptures, equals(0));
-    });
-
-    test('Team wins when all 8 partner tokens are home', () {
-      final controller = GameController(diceService: ScriptedDiceService([2]));
-      controller.startNewGame(playerCount: 4, teamMode: true);
-
-      // Team A: player 0 fully home, player 2 has 3 home + 1 at step 54.
-      final p0 = controller.state.players[0];
-      final p2 = controller.state.players[2];
-      final p0Tokens =
-          List.generate(4, (i) => Token(id: i, color: p0.color, step: 56));
-      final p2Tokens =
-          List.generate(4, (i) => Token(id: i, color: p2.color, step: 56));
-      p2Tokens[3] = p2Tokens[3].copyWith(step: 54);
-
-      controller.state = controller.state.copyWith(
-        players: [
-          p0.copyWith(tokens: p0Tokens),
-          controller.state.players[1],
-          p2.copyWith(tokens: p2Tokens),
-          controller.state.players[3],
-        ],
-        currentPlayerIndex: 2,
-      );
-
-      controller.rollDice(); // 2, exact finish for token 3
-      controller.moveToken(3);
-
-      expect(controller.state.phase, equals(GamePhase.finished));
-      expect(controller.state.finishOrder.length, equals(2));
+    test('4 players sit clockwise: Red, Green, Yellow, Blue', () {
+      final c = newGame([1], players: 4);
       expect(
-        controller.state.finishOrder.map((p) => p.teamId).toSet(),
-        equals({0}),
+        c.state.players.map((p) => p.color).toList(),
+        equals([
+          LudoColor.red,
+          LudoColor.green,
+          LudoColor.yellow,
+          LudoColor.blue,
+        ]),
       );
+    });
+
+    test('2 players default to opposite colors Red vs Yellow', () {
+      final c = newGame([1], players: 2);
+      expect(
+        c.state.players.map((p) => p.color).toList(),
+        equals([LudoColor.red, LudoColor.yellow]),
+      );
+    });
+
+    test('3 players default to Red, Green, Yellow', () {
+      final c = newGame([1], players: 3);
+      expect(
+        c.state.players.map((p) => p.color).toList(),
+        equals([
+          LudoColor.red,
+          LudoColor.green,
+          LudoColor.yellow,
+        ]),
+      );
+    });
+
+    test('Turn order is clockwise Red, Green, Yellow, Blue', () {
+      // All tokens in base + rolling 1 never moves: pure passes.
+      final c = newGame([1, 1, 1, 1], players: 4, first: 0);
+      c.rollDice();
+      expect(c.state.currentPlayerIndex, equals(1));
+      c.rollDice();
+      expect(c.state.currentPlayerIndex, equals(2));
+      c.rollDice();
+      expect(c.state.currentPlayerIndex, equals(3));
+      c.rollDice();
+      expect(c.state.currentPlayerIndex, equals(0));
+    });
+
+    test('First player is chosen randomly', () {
+      final seen = <int>{};
+      for (int i = 0; i < 200; i++) {
+        final c = GameController(
+          diceService: ScriptedDiceService([1]),
+          persistence: MemoryPersistence(),
+        );
+        c.startNewGame(playerCount: 4);
+        expect(c.state.currentPlayerIndex, inInclusiveRange(0, 3));
+        seen.add(c.state.currentPlayerIndex);
+      }
+      // 200 random starts must cover every seat.
+      expect(seen, equals({0, 1, 2, 3}));
+    });
+
+    test('firstPlayerIndex override pins the starting player', () {
+      final c = newGame([1], players: 4, first: 2);
+      expect(c.state.currentPlayerIndex, equals(2));
+    });
+  });
+
+  // ------------------------------------------------------------------ §2
+  group('Dice (§2)', () {
+    test('One roll per tap: extra rolls while pending are ignored', () {
+      final c = newGame([4, 5], first: 0);
+      setSteps(c, 0, [10, -1, -1, -1]);
+      expect(c.rollDice(), equals(4));
+      expect(c.state.totalTurns, equals(1));
+      // Tap again before moving: same value, no new roll consumed.
+      expect(c.rollDice(), equals(4));
+      expect(c.state.totalTurns, equals(1));
+      expect(c.state.movableTokenIds, equals([0]));
+    });
+  });
+
+  // ------------------------------------------------------------------ §3
+  group('Board and path (§3)', () {
+    test('Journey: step 50 -> home column -> exact center', () {
+      final c = newGame([1, 1], first: 0);
+      setSteps(c, 0, [50, -1, -1, -1]);
+      c.rollDice();
+      expect(c.state.movableTokenIds, equals([0]));
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(51));
+      expect(
+          c.state.players[0].tokens[0].isOnHomeStretch, isTrue);
+
+      backTo(c, 0);
+      setSteps(c, 0, [55, -1, -1, -1]);
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(56));
+      expect(c.state.players[0].tokens[0].isHome, isTrue);
+    });
+
+    test('Tokens in the home column can never be captured', () {
+      final c = newGame([2], first: 0);
+      setSteps(c, 0, [54, -1, -1, -1]);
+      // Opponent token anywhere on the track.
+      setSteps(c, 1, [10, -1, -1, -1]);
+      c.rollDice(); // 2 -> exact center
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(56));
+      expect(c.state.totalCaptures, equals(0));
+      expect(c.state.players[1].tokens[0].step, equals(10));
+    });
+
+    test('Start squares are 0/13/26/39 with safe stars at 8/21/34/47',
+        () {
+      expect(LudoColor.red.startSquare, equals(0));
+      expect(LudoColor.green.startSquare, equals(13));
+      expect(LudoColor.yellow.startSquare, equals(26));
+      expect(LudoColor.blue.startSquare, equals(39));
+      for (final s in [0, 8, 13, 21, 26, 34, 39, 47]) {
+        expect(BoardCoordinates.isSafeSquare(s), isTrue);
+      }
+      expect(BoardCoordinates.isSafeSquare(4), isFalse);
+    });
+  });
+
+  // ------------------------------------------------------------------ §4
+  group('Movement (§4)', () {
+    test('A token leaves the base only on a 6, onto its start square',
+        () {
+      final c = newGame([6], first: 0);
+      c.rollDice();
+      expect(c.state.movableTokenIds, equals([0, 1, 2, 3]));
+      c.moveToken(2);
+      final t = c.state.players[0].tokens[2];
+      expect(t.step, equals(0));
+      expect(t.globalTrackIndex,
+          equals(c.state.players[0].color.startSquare));
+    });
+
+    test('Rolls 1-5 cannot leave the base and auto-pass', () {
+      for (final roll in [1, 2, 3, 4, 5]) {
+        final c = newGame([roll], first: 0);
+        c.rollDice();
+        expect(c.state.movableTokenIds, isEmpty);
+        expect(c.state.currentPlayerIndex, equals(1));
+      }
+    });
+
+    test('After leaving, a token moves forward by the roll', () {
+      final c = newGame([6, 3], first: 0);
+      c.rollDice();
+      c.moveToken(0); // out to step 0, bonus roll
+      c.rollDice(); // 3
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(3));
+    });
+
+    test('Exact roll required for the center; smaller moves close in',
+        () {
+      final c = newGame([4], first: 0);
+      setSteps(c, 0, [54, -1, -1, -1]);
+      c.rollDice(); // 4 overshoots 54 -> 58
+      expect(c.state.movableTokenIds.contains(0), isFalse);
+      expect(c.state.currentPlayerIndex,
+          equals(1)); // auto-pass, no bonus
+
+      final c2 = newGame([2], first: 0);
+      setSteps(c2, 0, [53, -1, -1, -1]);
+      c2.rollDice();
+      expect(c2.state.movableTokenIds, equals([0]));
+      c2.moveToken(0);
+      expect(c2.state.players[0].tokens[0].step, equals(55));
+    });
+
+    test('With a legal move the turn waits: no voluntary passing', () {
+      final c = newGame([3], first: 0);
+      setSteps(c, 0, [10, -1, -1, -1]);
+      c.rollDice();
+      expect(c.state.mustSelectToken, isTrue);
+      expect(c.state.currentPlayerIndex, equals(0));
+      // Illegal token id is ignored, turn still waits.
+      c.moveToken(99);
+      expect(c.state.currentPlayerIndex, equals(0));
+      expect(c.state.players[0].tokens[0].step, equals(10));
+    });
+
+    test('A 6 with no legal move passes (no bonus without a move)', () {
+      final c = newGame([6], first: 0);
+      // Every token would overshoot the center with a 6.
+      setSteps(c, 0, [51, 52, 53, 54]);
+      c.rollDice();
+      expect(c.state.movableTokenIds, isEmpty);
+      expect(c.state.currentPlayerIndex, equals(1));
+      expect(c.state.consecutiveSixes, equals(0));
+    });
+
+    test('There is no undo: moves are final', () {
+      // The controller exposes no undo API; a committed move simply stays.
+      final c = newGame([6], first: 0);
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(0));
+      // No `undoX` method exists on the controller (compile-time guarantee
+      // checked by review); state offers no snapshot fields.
+      expect(c.state.currentDiceRoll, isNull);
+    });
+  });
+
+  // ------------------------------------------------------------------ §5
+  group('Extra turns (§5)', () {
+    test('Rolling a 6 grants another roll after moving', () {
+      final c = newGame([6], first: 0);
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.currentPlayerIndex, equals(0));
+      expect(c.state.canRollDice, isTrue);
+      expect(c.state.consecutiveSixes, equals(1));
+    });
+
+    test('Capture grants an extra turn even without a 6', () {
+      final c = newGame([3], first: 0);
+      // Red token at step 1 -> 4 (global 4, not safe).
+      setSteps(c, 0, [1, -1, -1, -1]);
+      // Yellow at global 4 == step (4 - 26 + 52) % 52 = 30.
+      setSteps(c, 1, [30, -1, -1, -1]);
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[1].tokens[0].step, equals(-1));
+      expect(c.state.currentPlayerIndex, equals(0));
+      expect(c.state.currentDiceRoll, isNull);
+    });
+
+    test('Bringing a token to the center grants an extra turn', () {
+      final c = newGame([2], first: 0);
+      setSteps(c, 0, [54, 10, -1, -1]);
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(56));
+      expect(c.state.currentPlayerIndex, equals(0));
+    });
+
+    test('Bonuses chain: capture, then 6, then turn passes on plain roll',
+        () {
+      final c = newGame([3, 6, 2], first: 0);
+      setSteps(c, 0, [1, -1, -1, -1]);
+      setSteps(c, 1, [30, -1, -1, -1]); // yellow on global 4
+      c.rollDice(); // 3, captures
+      c.moveToken(0);
+      expect(c.state.currentPlayerIndex, equals(0)); // capture bonus
+      c.rollDice(); // 6
+      expect(c.state.consecutiveSixes, equals(1));
+      c.moveToken(1); // second token exits to step 0
+      expect(c.state.players[0].tokens[1].step, equals(0));
+      expect(c.state.currentPlayerIndex, equals(0)); // six bonus
+      c.rollDice(); // 2
+      c.moveToken(0); // 4 -> 6, no bonus
+      expect(c.state.currentPlayerIndex, equals(1));
+      expect(c.state.consecutiveSixes, equals(0));
+    });
+
+    test('Three consecutive 6s: third voided, first two moves stay', () {
+      final c = newGame([6, 6, 6], first: 0);
+      c.rollDice();
+      c.moveToken(0); // out to step 0
+      c.rollDice();
+      c.moveToken(0); // step 0 -> 6
+      expect(c.state.players[0].tokens[0].step, equals(6));
+      c.rollDice(); // third 6: void, no move offered
+      expect(c.state.movableTokenIds, isEmpty);
+      expect(c.state.currentPlayerIndex, equals(1));
+      expect(c.state.consecutiveSixes, equals(0));
+      // The first two moves were NOT reverted.
+      expect(c.state.players[0].tokens[0].step, equals(6));
+    });
+  });
+
+  // ------------------------------------------------------------------ §6
+  group('Capture and safe squares (§6)', () {
+    test('Landing exactly on an opponent captures it to base', () {
+      final c = newGame([3], first: 0);
+      setSteps(c, 0, [1, -1, -1, -1]);
+      setSteps(c, 1, [30, -1, -1, -1]); // yellow, global 4
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(4));
+      expect(c.state.players[1].tokens[0].step, equals(-1));
+      expect(c.state.totalCaptures, equals(1));
+    });
+
+    test('Passing over an opponent does nothing', () {
+      final c = newGame([4], first: 0);
+      setSteps(c, 0, [1, -1, -1, -1]); // lands on step 5, passes 2..4
+      setSteps(c, 1, [29, -1, -1, -1]); // yellow, global 3
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(5));
+      expect(c.state.players[1].tokens[0].step, equals(29));
+      expect(c.state.totalCaptures, equals(0));
+    });
+
+    test('Start squares are safe and can be shared', () {
+      final c = newGame([6], first: 0);
+      // Yellow parks on Red's start (global 0 == yellow step 26).
+      setSteps(c, 1, [26, -1, -1, -1]);
+      c.rollDice(); // 6, red exits onto step 0 (global 0)
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(0));
+      // Safe: the yellow token survives and both share the square.
+      expect(c.state.players[1].tokens[0].step, equals(26));
+      expect(c.state.totalCaptures, equals(0));
+    });
+
+    test('Star squares are safe and can be shared', () {
+      final c = newGame([2], first: 0);
+      setSteps(c, 0, [6, -1, -1, -1]); // -> step 8, global 8 (star)
+      setSteps(c, 1, [34, -1, -1, -1]); // yellow, global 8
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(8));
+      expect(c.state.players[1].tokens[0].step, equals(34));
+      expect(c.state.totalCaptures, equals(0));
+    });
+
+    test('Same-color stacks share squares freely', () {
+      final c = newGame([1], first: 0);
+      setSteps(c, 0, [1, 2, -1, -1]);
+      c.rollDice(); // 1: token 0 -> 2 joins token 1; token 1 -> 3
+      c.moveToken(0);
+      final steps =
+          c.state.players[0].tokens.map((t) => t.step).toList();
+      expect(steps.where((s) => s == 2).length, equals(2));
+      expect(c.state.totalCaptures, equals(0));
+    });
+
+    test('Block OFF: every opponent token on the square is captured', () {
+      final c = newGame([3], first: 0);
+      setSteps(c, 0, [1, -1, -1, -1]);
+      setSteps(c, 1, [30, 30, -1, -1]); // two yellows, global 4
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[1].tokens[0].step, equals(-1));
+      expect(c.state.players[1].tokens[1].step, equals(-1));
+      expect(c.state.totalCaptures, equals(2));
+    });
+
+    test('Block ON: landing on an opponent stack is illegal', () {
+      final c = newGame(
+        [3],
+        first: 0,
+        settings: const GameSettings(blockRule: true),
+      );
+      setSteps(c, 0, [1, -1, -1, -1]);
+      setSteps(c, 1, [30, 30, -1, -1]); // yellow stack, global 4
+      c.rollDice();
+      // The only out token would land on the block: no legal moves.
+      expect(c.state.movableTokenIds, isEmpty);
+      expect(c.state.currentPlayerIndex, equals(1));
+      expect(c.state.players[1].tokens[0].step, equals(30));
+    });
+
+    test('Block ON: single opponent tokens are still captured', () {
+      final c = newGame(
+        [3],
+        first: 0,
+        settings: const GameSettings(blockRule: true),
+      );
+      setSteps(c, 0, [1, -1, -1, -1]);
+      setSteps(c, 1, [30, -1, -1, -1]);
+      c.rollDice();
+      expect(c.state.movableTokenIds, equals([0]));
+      c.moveToken(0);
+      expect(c.state.players[1].tokens[0].step, equals(-1));
+    });
+
+    test('Block ON: safe squares are unaffected (stacks can be shared)',
+        () {
+      final c = newGame(
+        [2],
+        first: 0,
+        settings: const GameSettings(blockRule: true),
+      );
+      // Yellow stack on the safe star global 8.
+      setSteps(c, 1, [34, 34, -1, -1]);
+      setSteps(c, 0, [6, -1, -1, -1]); // -> step 8
+      c.rollDice();
+      expect(c.state.movableTokenIds, equals([0]));
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(8));
+      expect(c.state.players[1].tokens[0].step, equals(34));
+      expect(c.state.totalCaptures, equals(0));
+    });
+  });
+
+  // ------------------------------------------------------------------ §7
+  group('Winning and ranking (§7)', () {
+    test('All 4 home takes 1st place and the game continues', () {
+      final c = newGame([2], players: 3, first: 0);
+      setSteps(c, 0, [56, 56, 56, 54]);
+      c.rollDice();
+      c.moveToken(3);
+      expect(c.state.players[0].finishRank, equals(1));
+      expect(c.state.finishOrder.map((p) => p.id).toList(),
+          equals([0]));
+      // Default: the game continues for the rest.
+      expect(c.state.phase, equals(GamePhase.playing));
+      expect(c.state.currentPlayerIndex, equals(1));
+    });
+
+    test('Full game: 2nd, 3rd assigned, last standing takes last rank',
+        () {
+      final c = newGame([2], players: 3, first: 1);
+      // P0 already finished 1st.
+      final players = List<Player>.from(c.state.players);
+      players[0] = players[0].copyWith(
+        tokens: List.generate(
+            4,
+            (i) => players[0]
+                .tokens[i]
+                .copyWith(step: 56)),
+        finishRank: 1,
+      );
+      c.state = c.state.copyWith(
+        players: players,
+        finishOrder: [players[0]],
+        currentPlayerIndex: 1,
+      );
+      // P1 finishes second...
+      setSteps(c, 1, [56, 56, 56, 54]);
+      c.rollDice();
+      c.moveToken(3);
+      expect(c.state.players[1].finishRank, equals(2));
+      // ...and P2 automatically takes 3rd: game over.
+      expect(c.state.phase, equals(GamePhase.finished));
+      expect(c.state.players[2].finishRank, equals(3));
+      expect(c.state.finishOrder.map((p) => p.id).toList(),
+          equals([0, 1, 2]));
+    });
+
+    test('Finished players are skipped in the turn order', () {
+      final c = newGame([1, 1], players: 3, first: 1);
+      final players = List<Player>.from(c.state.players);
+      players[0] = players[0].copyWith(
+        tokens: List.generate(
+            4,
+            (i) => players[0]
+                .tokens[i]
+                .copyWith(step: 56)),
+        finishRank: 1,
+      );
+      c.state = c.state.copyWith(
+        players: players,
+        finishOrder: [players[0]],
+        currentPlayerIndex: 1,
+      );
+      c.rollDice(); // P1 all base, rolls 1 -> pass to P2 (not P0)
+      expect(c.state.currentPlayerIndex, equals(2));
+      c.rollDice(); // P2 passes back to P1, skipping finished P0
+      expect(c.state.currentPlayerIndex, equals(1));
+    });
+
+    test('End-at-first-winner stops the game immediately', () {
+      final c = newGame(
+        [2],
+        players: 2,
+        first: 0,
+        settings: const GameSettings(endAtFirstWinner: true),
+      );
+      setSteps(c, 0, [56, 56, 56, 54]);
+      c.rollDice();
+      c.moveToken(3);
+      expect(c.state.phase, equals(GamePhase.finished));
+      expect(c.state.finishOrder.length, equals(1));
+      expect(c.state.players[0].finishRank, equals(1));
+      expect(c.state.players[1].finishRank, isNull);
+    });
+  });
+
+  // ------------------------------------------------- settings & saves
+  group('Settings and persistence (§9, §10)', () {
+    test('Settings default to auto-move ON, block OFF, play-on, fx ON',
+        () {
+      const s = GameSettings();
+      expect(s.autoMove, isTrue);
+      expect(s.blockRule, isFalse);
+      expect(s.endAtFirstWinner, isFalse);
+      expect(s.sound, isTrue);
+      expect(s.vibration, isTrue);
+    });
+
+    test('Mid-turn save round-trips through JSON losslessly', () {
+      final c = newGame([6], players: 3, first: 1,
+          names: ['A', 'B', 'C']);
+      setSteps(c, 1, [12, -1, -1, 56]);
+      c.rollDice(); // 6, movables pending
+      final restored = GameState.fromJson(c.state.toJson());
+      expect(restored.currentPlayerIndex,
+          equals(c.state.currentPlayerIndex));
+      expect(restored.currentDiceRoll, equals(6));
+      expect(restored.consecutiveSixes,
+          equals(c.state.consecutiveSixes));
+      expect(restored.movableTokenIds,
+          equals(c.state.movableTokenIds));
+      expect(restored.statusMessage, equals(c.state.statusMessage));
+      expect(restored.totalTurns, equals(c.state.totalTurns));
+      for (int p = 0; p < 3; p++) {
+        expect(restored.players[p].name, equals(['A', 'B', 'C'][p]));
+        expect(
+          restored.players[p].tokens.map((t) => t.step).toList(),
+          equals(
+              c.state.players[p].tokens.map((t) => t.step).toList()),
+        );
+      }
+      // A restored mid-turn game is immediately playable.
+      final c2 = GameController(
+        diceService: ScriptedDiceService([6]),
+        persistence: MemoryPersistence(),
+      );
+      c2.restore(restored);
+      expect(c2.state.mustSelectToken, isTrue);
+    });
+
+    test('In-progress games are saved; finished games clear the save',
+        () async {
+      final persistence = MemoryPersistence();
+      final c = GameController(
+        diceService: ScriptedDiceService([2]),
+        persistence: persistence,
+        settings: const GameSettings(endAtFirstWinner: true),
+      );
+      c.startNewGame(playerCount: 2, firstPlayerIndex: 0);
+      await Future<void>.delayed(Duration.zero);
+      final saved = await persistence.loadGame();
+      expect(saved, isNotNull);
+      expect(saved!.players.length, equals(2));
+
+      setSteps(c, 0, [56, 56, 56, 54]);
+      c.rollDice();
+      c.moveToken(3); // wins, end-at-first -> finished
+      expect(c.state.phase, equals(GamePhase.finished));
+      await Future<void>.delayed(Duration.zero);
+      expect(await persistence.loadGame(), isNull);
     });
   });
 }

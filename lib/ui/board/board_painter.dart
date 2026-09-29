@@ -5,20 +5,26 @@ import 'package:flutter/material.dart';
 import '../../core/board_coordinates.dart';
 import '../../models/ludo_color.dart';
 
-/// "Aurora Arena" board — premium midnight-glass look.
+/// Tall premium board (§8–§9): the classic 15×15 cross layout drawn on a
+/// tall rectangle whose cells are ~1:1.33 (width:height), so it fills a
+/// portrait phone edge to edge. All path connections are identical to the
+/// standard grid — only the vertical pitch is stretched.
 ///
-/// * Edge-to-edge 15×15 grid, pearl track cells with crisp 1.2dp rules.
-/// * Frosted-glass corner yards with radial color glow + deep token wells.
-/// * Gold-foil safe stars, glowing chevron start cells, gradient home columns.
-/// * Center is a rounded trophy medallion (4 petals + gold crown hub),
-///   not the generic flat triangles of stock Ludo boards.
+/// * Clean light playing surfaces, soft gradients and shadows.
+/// * Tinted corner yards with token wells + active-turn glow.
+/// * Gold-foil safe stars, glowing start cells, gradient home columns.
+/// * Center trophy medallion (4 petals + gold crown hub).
 class BoardPainter extends CustomPainter {
+  /// Tall-cell proportions (width:height) for portrait phones.
+  static const double cellAspect = 1.33;
+
   final bool isDark;
   final LudoColor? activeColor;
 
   BoardPainter({required this.isDark, this.activeColor});
 
-  Color get _trackRule => isDark ? const Color(0xFF8E99B0) : const Color(0xFFA39A87);
+  Color get _trackRule =>
+      isDark ? const Color(0xFF8E99B0) : const Color(0xFFA39A87);
   Color get _ink => const Color(0xFF101A30);
   Color get _paper => const Color(0xFFFDFBF6);
 
@@ -27,22 +33,23 @@ class BoardPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double tileSize = size.width / 15.0;
-    _drawShell(canvas, size, tileSize);
-    _drawYards(canvas, tileSize);
-    _drawTrackCells(canvas, tileSize);
-    _drawHomeStretches(canvas, tileSize);
-    _drawCentre(canvas, tileSize);
-    _drawSafeStars(canvas, tileSize);
-    _drawStartCells(canvas, tileSize);
+    final double tw = size.width / 15.0;
+    final double th = size.height / 15.0;
+    final double tu = min(tw, th);
+    _drawShell(canvas, size, tw, th, tu);
+    _drawYards(canvas, tw, th, tu);
+    _drawTrackCells(canvas, tw, th, tu);
+    _drawHomeStretches(canvas, tw, th, tu);
+    _drawCentre(canvas, tw, th, tu);
+    _drawSafeStars(canvas, tw, th, tu);
+    _drawStartCells(canvas, tw, th, tu);
   }
 
-  // --- Shell: rounded bezel + soft vignette + linen texture ---------------
-  void _drawShell(Canvas canvas, Size size, double tile) {
+  // --- Shell: bezel + soft vignette ------------------------------------
+  void _drawShell(Canvas canvas, Size size, double tw, double th, double tu) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tile * 0.55));
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.55));
 
-    // Deep bezel gradient.
     final bezel = isDark
         ? const LinearGradient(
             colors: [Color(0xFF232F55), Color(0xFF0D1430), Color(0xFF1B2547)],
@@ -50,7 +57,7 @@ class BoardPainter extends CustomPainter {
             end: Alignment.bottomRight,
           )
         : const LinearGradient(
-            colors: [Color(0xFF33415F), Color(0xFF1D2942), Color(0xFF2C3A58)],
+            colors: [Color(0xFF3E5C8A), Color(0xFF2A3D5C), Color(0xFF46587A)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           );
@@ -59,14 +66,15 @@ class BoardPainter extends CustomPainter {
       Paint()..shader = bezel.createShader(rect),
     );
 
-    // Inner board paper with faint radial light from the center.
-    final inner = Rect.fromLTWH(
-      tile * 0.18, tile * 0.18, size.width - tile * 0.36, size.height - tile * 0.36);
-    final innerR = RRect.fromRectAndRadius(inner, Radius.circular(tile * 0.42));
+    // Clean light paper with a faint radial light from the center.
+    final inner = Rect.fromLTWH(tw * 0.18, th * 0.18,
+        size.width - tw * 0.36, size.height - th * 0.36);
+    final innerR =
+        RRect.fromRectAndRadius(inner, Radius.circular(tu * 0.42));
     final glow = RadialGradient(
       colors: [
-        Colors.white.withOpacity(isDark ? 0.10 : 0.55),
-        _paper.withOpacity(isDark ? 0.04 : 0.12),
+        Colors.white.withOpacity(isDark ? 0.10 : 0.45),
+        _paper.withOpacity(isDark ? 0.04 : 0.10),
         Colors.transparent,
       ],
       stops: const [0.0, 0.55, 1.0],
@@ -76,58 +84,46 @@ class BoardPainter extends CustomPainter {
     canvas.drawRRect(innerR, Paint()..color = _paper);
     canvas.drawRRect(innerR, Paint()..shader = glow.createShader(inner));
 
-    // Linen texture: deterministic micro-dots at very low alpha.
-    final dotPaint = Paint()
-      ..color = (isDark ? Colors.white : const Color(0xFF5A6272))
-          .withOpacity(0.05);
-    for (int r = 0; r < 15; r++) {
-      for (int c = 0; c < 15; c++) {
-        final seed = (r * 13 + c * 7) % 5;
-        if (seed != 0) continue;
-        canvas.drawCircle(
-          Offset((c + 0.72) * tile, (r + 0.28) * tile),
-          tile * 0.03,
-          dotPaint,
-        );
-      }
-    }
-
     canvas.drawRRect(
       rrect,
       Paint()
         ..color = _goldFoil.withOpacity(0.55)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = max(2.0, tile * 0.09),
+        ..strokeWidth = max(2.0, tu * 0.09),
     );
   }
 
-  // --- Corner yards: frosted glass + radial glow + deep wells -------------
-  void _drawYards(Canvas canvas, double tile) {
+  // --- Corner yards: tinted glass + wells + active glow ------------------
+  void _drawYards(Canvas canvas, double tw, double th, double tu) {
     void yard(double col, double row, LudoColor color) {
       final isActive = activeColor == color;
-      final outer = Rect.fromLTWH(col * tile, row * tile, tile * 6, tile * 6);
+      final outer =
+          Rect.fromLTWH(col * tw, row * th, tw * 6, th * 6);
 
-      // Tinted glass base.
       final glass = LinearGradient(
         colors: [
-          Color.alphaBlend(color.primary.withOpacity(0.85), const Color(0xFF1B2547)),
-          Color.alphaBlend(color.darkShade.withOpacity(0.95), const Color(0xFF0D1430)),
+          Color.alphaBlend(
+              color.primary.withOpacity(0.80), const Color(0xFFFFFFFF)),
+          Color.alphaBlend(
+              color.primary.withOpacity(0.55), const Color(0xFFF3EEDF)),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
-      final outerR = RRect.fromRectAndRadius(outer, Radius.circular(tile * 0.4));
+      final outerR =
+          RRect.fromRectAndRadius(outer, Radius.circular(tu * 0.4));
       canvas.drawRRect(outerR, Paint()..shader = glass.createShader(outer));
 
       // Radial aura from yard center.
-      final auraCenter = Offset((col + 3) * tile, (row + 3) * tile);
+      final auraCenter = Offset((col + 3) * tw, (row + 3) * th);
+      final auraR = tu * 3.1;
       canvas.drawCircle(
         auraCenter,
-        tile * 3.1,
+        auraR,
         Paint()
           ..shader = RadialGradient(
-            colors: [color.lightGlow.withOpacity(0.35), Colors.transparent],
-          ).createShader(Rect.fromCircle(center: auraCenter, radius: tile * 3.1)),
+            colors: [color.lightGlow.withOpacity(0.40), Colors.transparent],
+          ).createShader(Rect.fromCircle(center: auraCenter, radius: auraR)),
       );
 
       // Active-turn neon rim.
@@ -135,25 +131,25 @@ class BoardPainter extends CustomPainter {
         canvas.drawRRect(
           outerR,
           Paint()
-            ..color = color.lightGlow.withOpacity(0.95)
+            ..color = color.primary.withOpacity(0.95)
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(2.5, tile * 0.12)
-            ..maskFilter = MaskFilter.blur(BlurStyle.normal, tile * 0.06),
+            ..strokeWidth = max(2.5, tu * 0.14)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, tu * 0.06),
         );
       }
       canvas.drawRRect(
         outerR,
         Paint()
-          ..color = Colors.white.withOpacity(0.35)
+          ..color = Colors.white.withOpacity(0.6)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2,
       );
 
-      // Ivory holding panel — widened slightly so the spread-out token
-      // wells plus the middle dice all sit inside it.
-      final panel = Rect.fromLTWH(
-        (col + 0.7) * tile, (row + 0.7) * tile, tile * 4.6, tile * 4.6);
-      final panelR = RRect.fromRectAndRadius(panel, Radius.circular(tile * 0.3));
+      // Ivory holding panel.
+      final panel = Rect.fromLTWH((col + 0.7) * tw, (row + 0.7) * th,
+          tw * 4.6, th * 4.6);
+      final panelR =
+          RRect.fromRectAndRadius(panel, Radius.circular(tu * 0.3));
       canvas.drawRRect(
         panelR,
         Paint()
@@ -170,41 +166,39 @@ class BoardPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.4,
       );
-      // Soft drop shadow inside panel.
       canvas.drawRRect(
         panelR,
         Paint()
           ..color = Colors.black.withOpacity(0.08)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = tile * 0.12
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, tile * 0.08),
+          ..strokeWidth = tu * 0.12
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, tu * 0.08),
       );
 
       // Deep token wells.
       for (final slot in BoardCoordinates.baseSlots[color]!) {
-        final c = slot.toOffset(tile);
-        // Well pit.
-        canvas.drawCircle(c, tile * 0.52, Paint()..color = const Color(0xFFD9D2C2));
+        final c = slot.toOffsetXY(tw, th);
         canvas.drawCircle(
-          c + Offset(0, tile * 0.06),
-          tile * 0.44,
+            c, tu * 0.52, Paint()..color = const Color(0xFFD9D2C2));
+        canvas.drawCircle(
+          c + Offset(0, tu * 0.06),
+          tu * 0.44,
           Paint()..color = Colors.white.withOpacity(0.85),
         );
-        // Colored rim ring.
         canvas.drawCircle(
           c,
-          tile * 0.52,
+          tu * 0.52,
           Paint()
             ..color = color.primary
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(2.0, tile * 0.10),
+            ..strokeWidth = max(2.0, tu * 0.10),
         );
         if (isActive) {
           canvas.drawCircle(
             c,
-            tile * 0.58,
+            tu * 0.58,
             Paint()
-              ..color = color.lightGlow.withOpacity(0.7)
+              ..color = color.primary.withOpacity(0.7)
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1.6
               ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3),
@@ -219,13 +213,13 @@ class BoardPainter extends CustomPainter {
     yard(0, 9, LudoColor.blue);
   }
 
-  // --- Track: big pearl cells with crisp borders ---------------------------
-  void _drawTrackCells(Canvas canvas, double tile) {
+  // --- Track: pearl cells with crisp borders -----------------------------
+  void _drawTrackCells(Canvas canvas, double tw, double th, double tu) {
     for (final pt in BoardCoordinates.outerTrack) {
       final rect = Rect.fromLTWH(
-        pt.col * tile + 0.8, pt.row * tile + 0.8, tile - 1.6, tile - 1.6);
-      final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tile * 0.14));
-      // Pearl gradient + top highlight line for a tactile feel.
+          pt.col * tw + 0.8, pt.row * th + 0.8, tw - 1.6, th - 1.6);
+      final rrect =
+          RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.14));
       canvas.drawRRect(
         rrect,
         Paint()
@@ -236,8 +230,8 @@ class BoardPainter extends CustomPainter {
           ).createShader(rect),
       );
       canvas.drawLine(
-        Offset(rect.left + tile * 0.18, rect.top + 1.5),
-        Offset(rect.right - tile * 0.18, rect.top + 1.5),
+        Offset(rect.left + tw * 0.18, rect.top + 1.5),
+        Offset(rect.right - tw * 0.18, rect.top + 1.5),
         Paint()
           ..color = Colors.white.withOpacity(0.9)
           ..strokeWidth = 1.4
@@ -253,25 +247,31 @@ class BoardPainter extends CustomPainter {
     }
   }
 
-  void _drawHomeStretches(Canvas canvas, double tile) {
+  void _drawHomeStretches(
+      Canvas canvas, double tw, double th, double tu) {
     for (final entry in BoardCoordinates.homeStretches.entries) {
       final color = entry.key;
       for (int i = 0; i < entry.value.length; i++) {
         final pt = entry.value[i];
         final rect = Rect.fromLTWH(
-          pt.col * tile + 1.0, pt.row * tile + 1.0, tile - 2.0, tile - 2.0);
-        final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tile * 0.16));
+            pt.col * tw + 1.0, pt.row * th + 1.0, tw - 2.0, th - 2.0);
+        final rrect =
+            RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.16));
         canvas.drawRRect(
           rrect,
           Paint()
             ..shader = LinearGradient(
-              colors: [color.lightGlow.withOpacity(0.85), color.primary, color.darkShade],
+              colors: [
+                color.lightGlow.withOpacity(0.85),
+                color.primary,
+                color.darkShade
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ).createShader(rect),
         );
-        // Chevron pointing toward center.
-        _chevron(canvas, rect.center, tile * 0.20, Colors.white.withOpacity(0.85), color);
+        _chevron(canvas, rect.center, tu * 0.20,
+            Colors.white.withOpacity(0.85), color);
         canvas.drawRRect(
           rrect,
           Paint()
@@ -283,8 +283,8 @@ class BoardPainter extends CustomPainter {
     }
   }
 
-  void _chevron(Canvas canvas, Offset c, double s, Color color, LudoColor owner) {
-    // Direction toward board center from the home lane.
+  void _chevron(
+      Canvas canvas, Offset c, double s, Color color, LudoColor owner) {
     Offset dir;
     switch (owner) {
       case LudoColor.red:
@@ -311,18 +311,21 @@ class BoardPainter extends CustomPainter {
   }
 
   // --- Centre: trophy medallion -------------------------------------------
-  void _drawCentre(Canvas canvas, double tile) {
-    final centre = Offset(7.5 * tile, 7.5 * tile);
-    const r = 1.5;
+  void _drawCentre(Canvas canvas, double tw, double th, double tu) {
+    final centre = Offset(7.5 * tw, 7.5 * th);
     final corners = [
-      Offset((7.5 - r) * tile, (7.5 - r) * tile),
-      Offset((7.5 + r) * tile, (7.5 - r) * tile),
-      Offset((7.5 + r) * tile, (7.5 + r) * tile),
-      Offset((7.5 - r) * tile, (7.5 + r) * tile),
+      Offset((7.5 - 1.5) * tw, (7.5 - 1.5) * th),
+      Offset((7.5 + 1.5) * tw, (7.5 - 1.5) * th),
+      Offset((7.5 + 1.5) * tw, (7.5 + 1.5) * th),
+      Offset((7.5 - 1.5) * tw, (7.5 + 1.5) * th),
     ];
-    final colors = [LudoColor.red, LudoColor.green, LudoColor.yellow, LudoColor.blue];
+    final colors = [
+      LudoColor.red,
+      LudoColor.green,
+      LudoColor.yellow,
+      LudoColor.blue
+    ];
 
-    // Petals with rounded joins.
     for (int i = 0; i < 4; i++) {
       final a = corners[i];
       final b = corners[(i + 1) % 4];
@@ -332,7 +335,8 @@ class BoardPainter extends CustomPainter {
         ..quadraticBezierTo(
           (a.dx + b.dx) / 2 + (centre.dx - (a.dx + b.dx) / 2) * 0.12,
           (a.dy + b.dy) / 2 + (centre.dy - (a.dy + b.dy) / 2) * 0.12,
-          b.dx, b.dy)
+          b.dx,
+          b.dy)
         ..close();
       final color = colors[i];
       canvas.drawPath(
@@ -355,34 +359,38 @@ class BoardPainter extends CustomPainter {
 
     // Gold crown hub.
     canvas.drawCircle(
-      centre, tile * 0.72,
+      centre,
+      tu * 0.72,
       Paint()
         ..shader = const RadialGradient(
           colors: [Color(0xFFFFF3C4), Color(0xFFF2C14E), Color(0xFF9A7600)],
           stops: [0.0, 0.6, 1.0],
-        ).createShader(Rect.fromCircle(center: centre, radius: tile * 0.72)),
+        ).createShader(Rect.fromCircle(center: centre, radius: tu * 0.72)),
     );
     canvas.drawCircle(
-      centre, tile * 0.72,
+      centre,
+      tu * 0.72,
       Paint()
         ..color = const Color(0xFF5C4300)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.6,
     );
-    _star(canvas, centre, tile * 0.42, Paint()..color = const Color(0xFF5C4300), fill: true);
-    _star(canvas, centre + Offset(0, -tile * 0.03), tile * 0.36,
+    _star(canvas, centre, tu * 0.42,
+        Paint()..color = const Color(0xFF5C4300), fill: true);
+    _star(canvas, centre + Offset(0, -tu * 0.03), tu * 0.36,
         Paint()..color = Colors.white.withOpacity(0.95), fill: true);
   }
 
   // --- Safe stars: gold foil, impossible to miss ----------------------------
-  void _drawSafeStars(Canvas canvas, double tile) {
+  void _drawSafeStars(Canvas canvas, double tw, double th, double tu) {
     for (final index in BoardCoordinates.safeSquares) {
       if (_startColorFor(index) != null) continue;
       final pt = BoardCoordinates.outerTrack[index];
-      final c = pt.toOffset(tile);
-      final rect = Rect.fromCenter(center: c, width: tile - 2.0, height: tile - 2.0);
-      final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tile * 0.16));
-      // Gold foil wash behind the star.
+      final c = pt.toOffsetXY(tw, th);
+      final rect =
+          Rect.fromCenter(center: c, width: tw - 2.0, height: th - 2.0);
+      final rrect =
+          RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.16));
       canvas.drawRRect(
         rrect,
         Paint()
@@ -399,14 +407,14 @@ class BoardPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.6,
       );
-      // Embossed star: dark base + bright face.
-      _star(canvas, c + const Offset(0, 1.0), tile * 0.34,
+      _star(canvas, c + const Offset(0, 1.0), tu * 0.34,
           Paint()..color = _goldDeep.withOpacity(0.9), fill: true);
-      _star(canvas, c, tile * 0.32, Paint()..color = Colors.white, fill: true);
+      _star(canvas, c, tu * 0.32, Paint()..color = Colors.white,
+          fill: true);
     }
   }
 
-  // --- Start cells: glowing ring + directional arrow + emblem ---------------
+  // --- Start cells: glowing ring + directional arrow -------------------------
   LudoColor? _startColorFor(int index) {
     if (index == LudoColor.red.startSquare) return LudoColor.red;
     if (index == LudoColor.green.startSquare) return LudoColor.green;
@@ -415,14 +423,16 @@ class BoardPainter extends CustomPainter {
     return null;
   }
 
-  void _drawStartCells(Canvas canvas, double tile) {
+  void _drawStartCells(Canvas canvas, double tw, double th, double tu) {
     for (int i = 0; i < BoardCoordinates.outerTrack.length; i++) {
       final color = _startColorFor(i);
       if (color == null) continue;
       final pt = BoardCoordinates.outerTrack[i];
-      final c = pt.toOffset(tile);
-      final rect = Rect.fromCenter(center: c, width: tile - 2.0, height: tile - 2.0);
-      final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tile * 0.16));
+      final c = pt.toOffsetXY(tw, th);
+      final rect =
+          Rect.fromCenter(center: c, width: tw - 2.0, height: th - 2.0);
+      final rrect =
+          RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.16));
       canvas.drawRRect(
         rrect,
         Paint()
@@ -432,26 +442,27 @@ class BoardPainter extends CustomPainter {
             end: Alignment.bottomCenter,
           ).createShader(rect),
       );
-      // White inner ring.
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromCenter(center: c, width: tile * 0.78, height: tile * 0.78),
-          Radius.circular(tile * 0.2),
+          Rect.fromCenter(center: c, width: tu * 0.78, height: tu * 0.78),
+          Radius.circular(tu * 0.2),
         ),
         Paint()
           ..color = Colors.white.withOpacity(0.9)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.6,
       );
-      _arrow(canvas, c, tile * 0.30, Colors.white, i);
+      _arrow(canvas, c, tu * 0.30, Colors.white, i);
     }
   }
 
-  void _arrow(Canvas canvas, Offset centre, double size, Color color, int index) {
-    final next = BoardCoordinates.outerTrack[(index + 1) % BoardCoordinates.outerTrack.length];
+  void _arrow(
+      Canvas canvas, Offset centre, double size, Color color, int index) {
+    final next = BoardCoordinates
+        .outerTrack[(index + 1) % BoardCoordinates.outerTrack.length];
     final cur = BoardCoordinates.outerTrack[index];
-    final d = Offset(
-        (next.col - cur.col).sign.toDouble(), (next.row - cur.row).sign.toDouble());
+    final d = Offset((next.col - cur.col).sign.toDouble(),
+        (next.row - cur.row).sign.toDouble());
     final w = Offset(-d.dy, d.dx);
     Offset p(double along, double across) =>
         centre + d * (size * along) + w * (size * across);
@@ -464,7 +475,6 @@ class BoardPainter extends CustomPainter {
       ..lineTo(p(-0.15, -0.30).dx, p(-0.15, -0.30).dy)
       ..lineTo(p(0.25, -0.75).dx, p(0.25, -0.75).dy)
       ..close();
-    // Shadow then face.
     canvas.drawPath(path.shift(const Offset(0, 1.2)),
         Paint()..color = Colors.black.withOpacity(0.35));
     canvas.drawPath(path, Paint()..color = color);
@@ -494,5 +504,6 @@ class BoardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant BoardPainter oldDelegate) =>
-      oldDelegate.isDark != isDark || oldDelegate.activeColor != activeColor;
+      oldDelegate.isDark != isDark ||
+      oldDelegate.activeColor != activeColor;
 }

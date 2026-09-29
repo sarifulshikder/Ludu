@@ -1,24 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'core/theme/ludu_theme.dart';
+import 'models/game_settings.dart';
 import 'models/ludo_color.dart';
 import 'services/audio_service.dart';
+import 'services/haptics_service.dart';
+import 'services/persistence.dart';
 import 'state/game_controller.dart';
+import 'state/settings_controller.dart';
 import 'ui/screens/game_screen.dart';
 import 'ui/screens/setup_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set preferred orientations for pass-and-play tablet/phone
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Warm up the audio backend before the first dice roll so no effect is
-  // swallowed while players are still being prepared.
+  // Load persisted settings before the first frame so sound/vibration
+  // backends and toggles start in the saved state (§10).
+  GameSettings initialSettings = const GameSettings();
+  try {
+    initialSettings =
+        await const SharedPrefsPersistence().loadSettings() ??
+            initialSettings;
+  } catch (_) {
+    // Defaults stand.
+  }
+  AudioService.setMuted(!initialSettings.sound);
+  HapticsService.setEnabled(initialSettings.vibration);
+
+  // Warm up the audio backend before the first dice roll.
   AudioService.init();
 
   runApp(const LuduApp());
@@ -34,11 +50,15 @@ class LuduApp extends StatefulWidget {
 }
 
 class _LuduAppState extends State<LuduApp> {
-  ThemeMode _themeMode = ThemeMode.dark;
+  // Clean light look by default (§9); midnight arena one tap away.
+  ThemeMode _themeMode = ThemeMode.light;
 
   void _toggleTheme() {
+    HapticsService.selection();
     setState(() {
-      _themeMode = (_themeMode == ThemeMode.dark) ? ThemeMode.light : ThemeMode.dark;
+      _themeMode = (_themeMode == ThemeMode.dark)
+          ? ThemeMode.light
+          : ThemeMode.dark;
     });
   }
 
@@ -71,25 +91,42 @@ class LuduMainNavigator extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<LuduMainNavigator> createState() => _LuduMainNavigatorState();
+  ConsumerState<LuduMainNavigator> createState() =>
+      _LuduMainNavigatorState();
 }
 
 class _LuduMainNavigatorState extends ConsumerState<LuduMainNavigator> {
   bool _isPlaying = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Push preloaded settings into the engine once it exists.
+    Future.microtask(() {
+      if (!mounted) return;
+      ref
+          .read(gameControllerProvider.notifier)
+          .setSettings(ref.read(settingsControllerProvider));
+    });
+  }
+
   void _handleStartGame({
     required int playerCount,
     required List<String> playerNames,
     required List<LudoColor> playerColors,
-    bool teamMode = false,
   }) {
     ref.read(gameControllerProvider.notifier).startNewGame(
           playerCount: playerCount,
           playerNames: playerNames,
           playerColors: playerColors,
-          teamMode: teamMode,
         );
+    setState(() {
+      _isPlaying = true;
+    });
+  }
 
+  void _handleResumeGame() {
+    // The save was already restored into the controller by SetupScreen.
     setState(() {
       _isPlaying = true;
     });
@@ -113,6 +150,7 @@ class _LuduMainNavigatorState extends ConsumerState<LuduMainNavigator> {
 
     return SetupScreen(
       onStartGame: _handleStartGame,
+      onResumeGame: _handleResumeGame,
       onToggleTheme: widget.onToggleTheme,
       isDark: widget.isDark,
     );

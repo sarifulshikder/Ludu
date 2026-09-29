@@ -1,5 +1,4 @@
 import 'player.dart';
-import 'token.dart';
 
 enum GamePhase {
   setup,
@@ -11,8 +10,6 @@ class GameState {
   final List<Player> players;
   final int currentPlayerIndex;
   final int? currentDiceRoll;
-  final bool isRolling;
-  final bool isMovingToken;
   final int consecutiveSixes;
   final List<int> movableTokenIds;
   final String statusMessage;
@@ -21,21 +18,11 @@ class GameState {
   final int totalTurns;
   final int totalSixes;
   final int totalCaptures;
-  /// When true, 4-player Team 2v2 rules apply: teammates can't capture each
-  /// other and the first team with all 8 tokens home wins.
-  final bool teamMode;
-
-  // Snapshot to allow undoing third 6 if needed
-  final Token? lastMovedTokenSnapshot;
-  final int? lastMovedPlayerIndex;
-  final List<Token>? lastCapturedTokensSnapshot;
 
   const GameState({
     required this.players,
     this.currentPlayerIndex = 0,
     this.currentDiceRoll,
-    this.isRolling = false,
-    this.isMovingToken = false,
     this.consecutiveSixes = 0,
     this.movableTokenIds = const [],
     this.statusMessage = 'Tap the dice to roll!',
@@ -44,10 +31,6 @@ class GameState {
     this.totalTurns = 0,
     this.totalSixes = 0,
     this.totalCaptures = 0,
-    this.teamMode = false,
-    this.lastMovedTokenSnapshot,
-    this.lastMovedPlayerIndex,
-    this.lastCapturedTokensSnapshot,
   });
 
   Player get currentPlayer => players[currentPlayerIndex];
@@ -55,15 +38,10 @@ class GameState {
   bool get isGameOver => phase == GamePhase.finished;
 
   bool get canRollDice =>
-      phase == GamePhase.playing &&
-      !isRolling &&
-      !isMovingToken &&
-      currentDiceRoll == null;
+      phase == GamePhase.playing && currentDiceRoll == null;
 
   bool get mustSelectToken =>
       phase == GamePhase.playing &&
-      !isRolling &&
-      !isMovingToken &&
       currentDiceRoll != null &&
       movableTokenIds.isNotEmpty;
 
@@ -72,8 +50,6 @@ class GameState {
     int? currentPlayerIndex,
     int? currentDiceRoll,
     bool clearDiceRoll = false,
-    bool? isRolling,
-    bool? isMovingToken,
     int? consecutiveSixes,
     List<int>? movableTokenIds,
     String? statusMessage,
@@ -82,18 +58,12 @@ class GameState {
     int? totalTurns,
     int? totalSixes,
     int? totalCaptures,
-    bool? teamMode,
-    Token? lastMovedTokenSnapshot,
-    bool clearSnapshot = false,
-    int? lastMovedPlayerIndex,
-    List<Token>? lastCapturedTokensSnapshot,
   }) {
     return GameState(
       players: players ?? this.players,
       currentPlayerIndex: currentPlayerIndex ?? this.currentPlayerIndex,
-      currentDiceRoll: clearDiceRoll ? null : (currentDiceRoll ?? this.currentDiceRoll),
-      isRolling: isRolling ?? this.isRolling,
-      isMovingToken: isMovingToken ?? this.isMovingToken,
+      currentDiceRoll:
+          clearDiceRoll ? null : (currentDiceRoll ?? this.currentDiceRoll),
       consecutiveSixes: consecutiveSixes ?? this.consecutiveSixes,
       movableTokenIds: movableTokenIds ?? this.movableTokenIds,
       statusMessage: statusMessage ?? this.statusMessage,
@@ -102,10 +72,55 @@ class GameState {
       totalTurns: totalTurns ?? this.totalTurns,
       totalSixes: totalSixes ?? this.totalSixes,
       totalCaptures: totalCaptures ?? this.totalCaptures,
-      teamMode: teamMode ?? this.teamMode,
-      lastMovedTokenSnapshot: clearSnapshot ? null : (lastMovedTokenSnapshot ?? this.lastMovedTokenSnapshot),
-      lastMovedPlayerIndex: clearSnapshot ? null : (lastMovedPlayerIndex ?? this.lastMovedPlayerIndex),
-      lastCapturedTokensSnapshot: clearSnapshot ? null : (lastCapturedTokensSnapshot ?? this.lastCapturedTokensSnapshot),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'v': 1,
+        'players': players.map((p) => p.toJson()).toList(),
+        'currentPlayerIndex': currentPlayerIndex,
+        'currentDiceRoll': currentDiceRoll,
+        'consecutiveSixes': consecutiveSixes,
+        'movableTokenIds': movableTokenIds,
+        'statusMessage': statusMessage,
+        'phase': phase.index,
+        'totalTurns': totalTurns,
+        'totalSixes': totalSixes,
+        'totalCaptures': totalCaptures,
+      };
+
+  factory GameState.fromJson(Map<String, dynamic> json) {
+    final rawPlayers = json['players'] as List?;
+    if (rawPlayers == null || rawPlayers.isEmpty) {
+      throw const FormatException('Missing players in save');
+    }
+    final players = rawPlayers
+        .map((e) => Player.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+    final phaseIndex = json['phase'] as int?;
+    final movable = json['movableTokenIds'] as List?;
+    // Rebuild finish order from ranks (1st, 2nd, ...).
+    final ranked = players.where((p) => p.finishRank != null).toList()
+      ..sort((a, b) => a.finishRank!.compareTo(b.finishRank!));
+    return GameState(
+      players: players,
+      currentPlayerIndex:
+          (json['currentPlayerIndex'] as int? ?? 0) % players.length,
+      currentDiceRoll: json['currentDiceRoll'] as int?,
+      consecutiveSixes: (json['consecutiveSixes'] as int? ?? 0).clamp(0, 2),
+      movableTokenIds:
+          movable == null ? const [] : movable.cast<int>().toList(),
+      statusMessage:
+          (json['statusMessage'] as String?) ?? 'Tap the dice to roll!',
+      finishOrder: ranked,
+      phase: (phaseIndex != null &&
+              phaseIndex >= 0 &&
+              phaseIndex < GamePhase.values.length)
+          ? GamePhase.values[phaseIndex]
+          : GamePhase.playing,
+      totalTurns: (json['totalTurns'] as int?) ?? 0,
+      totalSixes: (json['totalSixes'] as int?) ?? 0,
+      totalCaptures: (json['totalCaptures'] as int?) ?? 0,
     );
   }
 }

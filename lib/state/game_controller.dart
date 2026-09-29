@@ -1,5 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../core/board_coordinates.dart';
+import '../models/game_settings.dart';
 import '../models/game_state.dart';
 import '../models/ludo_color.dart';
 import '../models/player.dart';
@@ -7,30 +11,69 @@ import '../models/token.dart';
 import '../services/audio_service.dart';
 import '../services/dice_service.dart';
 import '../services/haptics_service.dart';
+import '../services/persistence.dart';
+import 'settings_controller.dart';
 
 final diceServiceProvider = Provider<DiceService>((ref) => DiceService());
 
 final gameControllerProvider =
     StateNotifierProvider<GameController, GameState>((ref) {
   final diceService = ref.watch(diceServiceProvider);
-  return GameController(diceService: diceService);
+  final persistence = ref.watch(persistenceProvider);
+  // Live settings: the engine always enforces the current UI settings
+  // (block rule, end-at-first-winner) at action time.
+  return GameController(
+    diceService: diceService,
+    persistence: persistence,
+    settingsReader: () => ref.read(settingsControllerProvider),
+  );
 });
 
+/// Standard Ludo engine (§1–§7), fully UI-independent and unit-tested.
+///
+/// Step model: -1 = base, 0..50 = outer track (50 moves after entering),
+/// 51..55 = own home column (capture-free), 56 = center. Entering the
+/// board costs a 6 and lands on the color's own (safe) start square.
 class GameController extends StateNotifier<GameState> {
   final DiceService _diceService;
+  final GamePersistence _persistence;
+  final GameSettings Function()? _settingsReader;
+  GameSettings _localSettings = const GameSettings();
 
-  GameController({DiceService? diceService})
-      : _diceService = diceService ?? DiceService(),
-        super(GameState(players: _createDefaultPlayers(4)));
+  GameController({
+    DiceService? diceService,
+    GamePersistence? persistence,
+    GameSettings? settings,
+    this._settingsReader,
+  })  : _diceService = diceService ?? DiceService(),
+        _persistence = persistence ?? const SharedPrefsPersistence(),
+        super(GameState(players: _createDefaultPlayers(4))) {
+    if (settings != null) _localSettings = settings;
+  }
+
+  /// Settings currently enforced by the engine.
+  GameSettings get settings => _settingsReader?.call() ?? _localSettings;
+
+  /// Direct settings override (used in tests; the app reads live settings).
+  /// Recomputes pending movables so a mid-turn rule change stays legal.
+  set settings(GameSettings value) => setSettings(value);
+
+  void setSettings(GameSettings value) {
+    _localSettings = value;
+    if (state.phase == GamePhase.playing && state.currentDiceRoll != null) {
+      final movables =
+          getMovableTokenIds(state.currentPlayer, state.currentDiceRoll!);
+      state = state.copyWith(movableTokenIds: movables);
+    }
+  }
 
   static List<Player> _createDefaultPlayers(int count) {
-    // Seat order: P1 red top-left, P2 green top-right, P3 blue
-    // bottom-left, P4 yellow bottom-right.
+    // Clockwise turn order: Red, Green, Yellow, Blue (§1).
     const defaultColors = [
       LudoColor.red,
       LudoColor.green,
-      LudoColor.blue,
       LudoColor.yellow,
+      LudoColor.blue,
     ];
     return List.generate(
       count.clamp(2, 4),
@@ -42,53 +85,62 @@ class GameController extends StateNotifier<GameState> {
     );
   }
 
-  /// Starts a new game with [playerCount] and optional custom names/colors.
-  /// When [teamMode] is true (4 players), slots 0&2 form Team A (left
-  /// column: red + blue) and slots 1&3 form Team B (right column:
-  /// green + yellow).
+  /// Default seat colors: 2 players sit opposite (Red vs Yellow),
+  /// 3 players take Red/Green/Yellow, 4 play clockwise Red/Green/Yellow/Blue.
+  static List<LudoColor> defaultColorsFor(int count) {
+    if (count == 2) return [LudoColor.red, LudoColor.yellow];
+    return const [
+      LudoColor.red,
+      LudoColor.green,
+      LudoColor.yellow,
+      LudoColor.blue,
+    ].sublist(0, count.clamp(2, 4));
+  }
+
+  /// Starts a new game. The first player is chosen randomly (§1) unless
+  /// [firstPlayerIndex] is given (deterministic tests / rematch fairness).
   void startNewGame({
     required int playerCount,
     List<String>? playerNames,
     List<LudoColor>? playerColors,
-    bool teamMode = false,
+    int? firstPlayerIndex,
   }) {
     final count = playerCount.clamp(2, 4);
-    final teams = teamMode && count == 4;
-    final colors = playerColors ??
-        (count == 2
-            ? [LudoColor.red, LudoColor.yellow] // Diagonally opposite for balanced 2-player
-            : [
-                LudoColor.red,
-                LudoColor.green,
-                LudoColor.blue,
-                LudoColor.yellow,
-              ].sublist(0, count));
+    final colors = playerColors ?? defaultColorsFor(count);
 
     final players = List.generate(
       count,
       (i) => Player(
         id: i,
-        name: (playerNames != null && i < playerNames.length && playerNames[i].trim().isNotEmpty)
+        name: (playerNames != null &&
+                i < playerNames.length &&
+                playerNames[i].trim().isNotEmpty)
             ? playerNames[i].trim()
             : 'Player ${i + 1}',
         color: colors[i],
-        teamId: teams ? ((i == 0 || i == 2) ? 0 : 1) : i,
       ),
     );
 
+    final first = firstPlayerIndex != null
+        ? firstPlayerIndex % count
+        : Random.secure().nextInt(count);
     state = GameState(
       players: players,
-      currentPlayerIndex: 0,
+      currentPlayerIndex: first,
       phase: GamePhase.playing,
-      teamMode: teams,
-      statusMessage: teams
-          ? '${players[0].name} (${Player.teamName(0)}) starts! Tap the dice.'
-          : '${players[0].name}\'s turn. Tap the dice to roll!',
+      statusMessage: '${players[first].name} starts! Tap the dice.',
     );
+    _persist();
   }
 
-  /// Rolls the dice using cryptographically secure RNG.
-  /// Enforces standard Ludo rules, legal move calculations, and the 3-sixes cancellation rule.
+  /// Restores a previously saved game (§10).
+  void restore(GameState saved) {
+    state = saved;
+  }
+
+  /// Rolls the dice using cryptographically secure RNG (§2).
+  /// Extra taps while a roll is pending are ignored: [canRollDice] is false
+  /// until the move (or auto-pass) resolves.
   int rollDice() {
     if (!state.canRollDice) return state.currentDiceRoll ?? 1;
 
@@ -98,23 +150,23 @@ class GameController extends StateNotifier<GameState> {
       AudioService.playSix();
     }
     final player = state.currentPlayer;
-    int newConsecutiveSixes = (roll == 6) ? state.consecutiveSixes + 1 : 0;
-    int totalSixes = state.totalSixes + (roll == 6 ? 1 : 0);
-    int totalTurns = state.totalTurns + 1;
+    final int newConsecutiveSixes =
+        (roll == 6) ? state.consecutiveSixes + 1 : 0;
+    final int totalSixes = state.totalSixes + (roll == 6 ? 1 : 0);
+    final int totalTurns = state.totalTurns + 1;
 
-    // Rule: If a player rolls three 6s in a row within the same turn,
-    // cancel/forfeit the move and pass turn to next player immediately.
+    // §5: three consecutive 6s in one turn — the third 6 is voided, no move
+    // is made (moves from the first two 6s stay), turn passes immediately.
     if (newConsecutiveSixes >= 3) {
       state = state.copyWith(
         currentDiceRoll: roll,
         consecutiveSixes: 3,
         totalSixes: totalSixes,
         totalTurns: totalTurns,
-        statusMessage: 'Three 6s in a row! Turn forfeited for ${player.name}!',
+        statusMessage:
+            'Three 6s in a row! Roll voided for ${player.name}.',
         movableTokenIds: const [],
       );
-
-      // Advance turn immediately after 3rd six
       advanceToNextPlayer();
       return roll;
     }
@@ -139,43 +191,85 @@ class GameController extends StateNotifier<GameState> {
       totalTurns: totalTurns,
     );
 
-    // If no moves are possible, turn automatically passes
+    // §4: no legal move — the turn passes automatically (the UI adds a
+    // short beat before enabling the next dice). A 6 with no legal move
+    // earns no bonus: no move was actually made (§5).
     if (movableTokens.isEmpty) {
-      // If player rolled 6 but has no moves, does extra turn apply?
-      // In standard Ludo, if a player cannot move with a 6, the turn passes
-      // (or if they roll a 6 with no moves, some rules allow another roll,
-      // but standard rule is: no legal move -> pass turn).
       advanceToNextPlayer();
+    } else {
+      _persist();
     }
 
     return roll;
   }
 
   /// Determines which tokens of [player] can legally move with [roll].
+  ///
+  /// * Base exit needs a 6 (lands on the own, always-safe start square).
+  /// * Reaching the center needs the exact number — no overshoot.
+  /// * With the Block rule ON, landing on an opponent stack (2+ same-color
+  ///   tokens on a non-safe square) is illegal.
   List<int> getMovableTokenIds(Player player, int roll) {
+    final playerIndex =
+        state.players.indexWhere((p) => p.id == player.id);
+    final ownerIdx = playerIndex == -1
+        ? state.currentPlayerIndex
+        : playerIndex;
+    final blocks = settings.blockRule
+        ? _opponentBlockSquares(ownerIdx)
+        : const <int>{};
+
     final List<int> movable = [];
     for (final token in player.tokens) {
       if (token.isHome) continue;
 
       if (token.isInBase) {
-        if (roll == 6) {
-          movable.add(token.id);
-        }
+        if (roll == 6) movable.add(token.id);
       } else {
-        // Token is on outer track or home stretch
         final targetStep = token.step + roll;
-        // Exact roll required to reach home (step 56)
-        if (targetStep <= 56) {
-          movable.add(token.id);
+        if (targetStep > 56) continue; // exact roll required
+        if (targetStep <= 50 && blocks.isNotEmpty) {
+          final landing =
+              (player.color.startSquare + targetStep) % 52;
+          if (!BoardCoordinates.isSafeSquare(landing) &&
+              blocks.contains(landing)) {
+            continue; // blocked square — cannot land (§6)
+          }
         }
+        movable.add(token.id);
       }
     }
     return movable;
   }
 
-  /// Moves the token with [tokenId] for the current player.
+  /// Global track squares holding 2+ tokens of one opponent color on a
+  /// non-safe square (only meaningful with the Block rule ON).
+  Set<int> _opponentBlockSquares(int ownerIdx) {
+    final Map<int, Map<int, int>> counts = {};
+    for (int p = 0; p < state.players.length; p++) {
+      if (p == ownerIdx) continue;
+      for (final token in state.players[p].tokens) {
+        if (!token.isOnOuterTrack) continue;
+        final g = token.globalTrackIndex!;
+        if (BoardCoordinates.isSafeSquare(g)) continue;
+        counts.putIfAbsent(p, () => {})[g] =
+            (counts[p]![g] ?? 0) + 1;
+      }
+    }
+    final blocks = <int>{};
+    for (final perPlayer in counts.values) {
+      perPlayer.forEach((square, count) {
+        if (count >= 2) blocks.add(square);
+      });
+    }
+    return blocks;
+  }
+
+  /// Moves [tokenId] for the current player. There is no undo (§4) and no
+  /// voluntary passing: with at least one legal move the player must move.
   void moveToken(int tokenId) {
-    if (!state.mustSelectToken || !state.movableTokenIds.contains(tokenId)) {
+    if (!state.mustSelectToken ||
+        !state.movableTokenIds.contains(tokenId)) {
       return;
     }
 
@@ -183,17 +277,7 @@ class GameController extends StateNotifier<GameState> {
     final token = player.tokens.firstWhere((t) => t.id == tokenId);
     final roll = state.currentDiceRoll!;
 
-    // Save snapshot for potential undo
-    final tokenSnapshot = token;
-    final int playerIndexSnapshot = state.currentPlayerIndex;
-    final List<Token> capturedSnapshots = [];
-
-    final int newStep;
-    if (token.isInBase) {
-      newStep = 0; // Enter outer track
-    } else {
-      newStep = token.step + roll;
-    }
+    final int newStep = token.isInBase ? 0 : token.step + roll;
 
     final updatedToken = token.copyWith(step: newStep);
     final updatedTokens = List<Token>.from(player.tokens);
@@ -207,28 +291,25 @@ class GameController extends StateNotifier<GameState> {
     String status = '${player.name} moved token ${token.id + 1}.';
     bool didCapture = false;
 
-    // Check for captures if landing on outer track (0..50)
+    // §6: only the exact landing square captures; passing over is safe.
+    // Base, home column and safe squares can never be captured.
     if (newStep >= 0 && newStep <= 50) {
-      final landingGlobalIndex = (player.color.startSquare + newStep) % 52;
+      final landingGlobalIndex =
+          (player.color.startSquare + newStep) % 52;
 
-      // Safe squares cannot be captured
       if (!BoardCoordinates.isSafeSquare(landingGlobalIndex)) {
         for (int p = 0; p < updatedPlayers.length; p++) {
           if (p == state.currentPlayerIndex) continue;
-          // Teammates are immune — partners stack safely (Team 2v2).
-          if (state.teamMode &&
-              updatedPlayers[p].teamId == player.teamId) {
-            continue;
-          }
           final opponent = updatedPlayers[p];
           final opponentTokens = List<Token>.from(opponent.tokens);
           bool opponentCaptured = false;
 
           for (int t = 0; t < opponentTokens.length; t++) {
             final opToken = opponentTokens[t];
-            if (opToken.isOnOuterTrack && opToken.globalTrackIndex == landingGlobalIndex) {
-              capturedSnapshots.add(opToken);
-              opponentTokens[t] = opToken.copyWith(step: -1); // Send back to base
+            if (opToken.isOnOuterTrack &&
+                opToken.globalTrackIndex == landingGlobalIndex) {
+              opponentTokens[t] =
+                  opToken.copyWith(step: -1); // back to base
               opponentCaptured = true;
               totalCaptures++;
             }
@@ -237,55 +318,55 @@ class GameController extends StateNotifier<GameState> {
           if (opponentCaptured) {
             AudioService.playCapture();
             HapticsService.capture();
-            updatedPlayers[p] = opponent.copyWith(tokens: opponentTokens);
-            status = '⚔️ ${player.name} captured ${opponent.name}\'s token!';
+            updatedPlayers[p] =
+                opponent.copyWith(tokens: opponentTokens);
+            status =
+                '⚔️ ${player.name} captured ${opponent.name}\u2019s token!';
             didCapture = true;
           }
         }
       }
     }
 
-    // Check if token reached Home (center, step 56) — exact roll already enforced.
     final bool didReachHome = newStep == 56;
     if (didReachHome) {
       AudioService.playSafe();
       HapticsService.victory();
-      status = '🎉 ${player.name}\'s token reached Home!';
+      status = '🎉 ${player.name}\u2019s token reached the center!';
     }
 
-    // Winning: solo = first player with all 4 home; team = first team
-    // with all 8 home.
+    // §7: the moment all 4 tokens reach the center the player takes the
+    // next rank. Unless "end at first winner" is on, the game continues
+    // for the remaining players; the last one standing takes the last rank.
     final List<Player> newFinishOrder = List.from(state.finishOrder);
+    bool isOver = false;
     bool justFinished = false;
-    if (state.teamMode) {
-      final mates = updatedPlayers
-          .where((p) => p.teamId == player.teamId)
-          .toList();
-      if (mates.every((m) => m.tokens.every((t) => t.isHome))) {
-        for (final m in mates) {
-          final idx = updatedPlayers.indexWhere((p) => p.id == m.id);
-          final ranked = m.copyWith(finishRank: 1);
-          updatedPlayers[idx] = ranked;
-          newFinishOrder.add(ranked);
-        }
-        updatedPlayer = updatedPlayers[state.currentPlayerIndex];
-        justFinished = true;
-        status =
-            '🏆 ${Player.teamName(player.teamId)} wins the game!';
-      } else if (didReachHome) {
-        // Teammate progress note (extra turn already granted below).
-      }
-    } else if (updatedPlayer.tokens.every((t) => t.isHome) &&
-        updatedPlayer.finishRank == null) {
-      const rank = 1;
+    if (updatedPlayer.hasFinished && updatedPlayer.finishRank == null) {
+      final rank = newFinishOrder.length + 1;
       updatedPlayer = updatedPlayer.copyWith(finishRank: rank);
       updatedPlayers[state.currentPlayerIndex] = updatedPlayer;
       newFinishOrder.add(updatedPlayer);
       justFinished = true;
-      status = '🏆 ${player.name} wins the game!';
+      status = '🏆 ${player.name} finished ${_ordinal(rank)}!';
+      if (settings.endAtFirstWinner) {
+        isOver = true;
+      } else {
+        final activeLeft =
+            updatedPlayers.where((p) => p.finishRank == null).toList();
+        if (activeLeft.length <= 1) {
+          if (activeLeft.length == 1) {
+            final last = activeLeft.first;
+            final lastRanked =
+                last.copyWith(finishRank: rank + 1);
+            updatedPlayers[updatedPlayers
+                .indexWhere((p) => p.id == last.id)] = lastRanked;
+            newFinishOrder.add(lastRanked);
+          }
+          isOver = true;
+        }
+      }
     }
 
-    final bool isOver = justFinished;
     if (isOver) {
       AudioService.playVictory();
       HapticsService.victory();
@@ -296,92 +377,47 @@ class GameController extends StateNotifier<GameState> {
       finishOrder: newFinishOrder,
       phase: isOver ? GamePhase.finished : GamePhase.playing,
       totalCaptures: totalCaptures,
-      statusMessage: isOver
-          ? (state.teamMode
-              ? '🏆 ${Player.teamName(player.teamId)} wins! All 8 tokens home.'
-              : '🏆 ${player.name} wins! All 4 tokens home.')
-          : status,
+      statusMessage: status,
       clearDiceRoll: true,
       movableTokenIds: const [],
-      lastMovedTokenSnapshot: tokenSnapshot,
-      lastMovedPlayerIndex: playerIndexSnapshot,
-      lastCapturedTokensSnapshot: capturedSnapshots,
     );
 
-    if (isOver) return;
+    if (isOver) {
+      _persist(); // finished games clear the resume save
+      return;
+    }
 
-    // Turn continuation rules (§4): extra roll when —
-    //  • roll is 6, OR
-    //  • an opponent token was captured, OR
-    //  • a token reached home (center).
-    // consecutiveSixes chain is preserved across the extra turn; it is only
-    // reset when the turn passes (see advanceToNextPlayer) or a non-6 is rolled
-    // (see rollDice which recomputes the counter).
-    final bool earnedExtraTurn =
+    // §5: an extra roll is earned only by a move actually made with a 6,
+    // by capturing, or by bringing a token into the center. Bonuses chain.
+    // A player who just finished takes no bonus — the turn moves on.
+    // consecutiveSixes survives across the extra turn and resets when the
+    // turn passes or a non-6 is rolled.
+    final bool earnedExtraTurn = !justFinished &&
         (roll == 6 || didCapture || didReachHome);
     if (earnedExtraTurn) {
       final reason = roll == 6
           ? 'Rolled a 6! Roll again.'
           : didCapture
               ? 'Capture bonus! Roll again.'
-              : 'Home bonus! Roll again.';
+              : 'Center bonus! Roll again.';
       state = state.copyWith(
         statusMessage: '$status $reason',
       );
+      _persist();
     } else {
-      // Advance to next active player
       advanceToNextPlayer();
     }
   }
 
-  /// Cancels and reverts whatever move was made on the 3rd six, then passes the turn.
-  void undoThirdSixMove() {
-    if (state.lastMovedTokenSnapshot == null || state.lastMovedPlayerIndex == null) {
-      return;
-    }
-
-    final pIdx = state.lastMovedPlayerIndex!;
-    final token = state.lastMovedTokenSnapshot!;
-    final updatedPlayers = List<Player>.from(state.players);
-
-    // Revert moved token
-    final player = updatedPlayers[pIdx];
-    final updatedTokens = List<Token>.from(player.tokens);
-    updatedTokens[token.id] = token;
-    updatedPlayers[pIdx] = player.copyWith(tokens: updatedTokens);
-
-    // Restore captured tokens if any
-    if (state.lastCapturedTokensSnapshot != null) {
-      for (final capToken in state.lastCapturedTokensSnapshot!) {
-        final ownerIdx = updatedPlayers.indexWhere((p) => p.color == capToken.color);
-        if (ownerIdx != -1) {
-          final op = updatedPlayers[ownerIdx];
-          final opTokens = List<Token>.from(op.tokens);
-          opTokens[capToken.id] = capToken;
-          updatedPlayers[ownerIdx] = op.copyWith(tokens: opTokens);
-        }
-      }
-    }
-
-    state = state.copyWith(
-      players: updatedPlayers,
-      consecutiveSixes: 0,
-      clearDiceRoll: true,
-      movableTokenIds: const [],
-      clearSnapshot: true,
-      statusMessage: 'Third consecutive 6 cancelled! Move reverted and turn passed.',
-    );
-
-    advanceToNextPlayer();
-  }
-
-  /// Advances turn to the next player who has not finished yet.
+  /// Advances to the next player who has not finished yet (§7).
   void advanceToNextPlayer() {
     if (state.phase == GamePhase.finished) return;
 
-    final activePlayers = state.players.where((p) => p.finishRank == null).toList();
-    if (activePlayers.isEmpty) {
+    final hasActive =
+        state.players.any((p) => p.finishRank == null);
+    if (!hasActive) {
       state = state.copyWith(phase: GamePhase.finished);
+      _persist();
       return;
     }
 
@@ -396,7 +432,27 @@ class GameController extends StateNotifier<GameState> {
       consecutiveSixes: 0,
       clearDiceRoll: true,
       movableTokenIds: const [],
-      statusMessage: '${nextPlayer.name}\'s turn. Tap the dice to roll!',
+      statusMessage: '${nextPlayer.name}\u2019s turn. Tap the dice to roll!',
     );
+    _persist();
+  }
+
+  void _persist() {
+    try {
+      if (state.phase == GamePhase.finished) {
+        _persistence.clearGame().then((_) {}, onError: (_) {});
+      } else {
+        _persistence.saveGame(state).then((_) {}, onError: (_) {});
+      }
+    } catch (_) {
+      // Storage must never break gameplay.
+    }
+  }
+
+  static String _ordinal(int n) {
+    if (n == 1) return '1st';
+    if (n == 2) return '2nd';
+    if (n == 3) return '3rd';
+    return '${n}th';
   }
 }

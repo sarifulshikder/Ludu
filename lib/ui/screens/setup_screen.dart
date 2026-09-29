@@ -1,53 +1,74 @@
 import 'package:flutter/material.dart';
-import '../../models/ludo_color.dart';
-import '../../services/audio_service.dart';
-import '../../services/haptics_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class SetupScreen extends StatefulWidget {
+import '../../models/game_state.dart';
+import '../../models/ludo_color.dart';
+import '../../services/haptics_service.dart';
+import '../../state/game_controller.dart';
+import '../../state/settings_controller.dart';
+
+/// Home screen (§10): Start Game, player count (2/3/4), player names and
+/// colors, resume-a-saved-game, rules and full settings.
+class SetupScreen extends ConsumerStatefulWidget {
   final Function({
     required int playerCount,
     required List<String> playerNames,
     required List<LudoColor> playerColors,
-    bool teamMode,
   }) onStartGame;
+  final VoidCallback onResumeGame;
   final VoidCallback onToggleTheme;
   final bool isDark;
 
   const SetupScreen({
     super.key,
     required this.onStartGame,
+    required this.onResumeGame,
     required this.onToggleTheme,
     required this.isDark,
   });
 
   @override
-  State<SetupScreen> createState() => _SetupScreenState();
+  ConsumerState<SetupScreen> createState() => _SetupScreenState();
 }
 
-class _SetupScreenState extends State<SetupScreen> {
+class _SetupScreenState extends ConsumerState<SetupScreen> {
   int _playerCount = 4;
   late List<TextEditingController> _nameControllers;
-  // Seat order: P1 red top-left, P2 green top-right, P3 blue
-  // bottom-left, P4 yellow bottom-right.
+
+  /// Clockwise seat order (§1): Red, Green, Yellow, Blue.
   final List<LudoColor> _selectedColors = [
     LudoColor.red,
     LudoColor.green,
-    LudoColor.blue,
     LudoColor.yellow,
+    LudoColor.blue,
   ];
-  bool _soundOn = !AudioService.isMuted;
-  bool _vibrationOn = HapticsService.isEnabled;
-  bool _teamMode = false;
 
   final List<LudoColor> _allColors = [
     LudoColor.red,
     LudoColor.green,
-    LudoColor.blue,
     LudoColor.yellow,
+    LudoColor.blue,
   ];
 
   List<LudoColor> get _activeColors =>
       _selectedColors.sublist(0, _playerCount);
+
+  @override
+  void initState() {
+    super.initState();
+    _nameControllers = List.generate(
+      4,
+      (i) => TextEditingController(text: 'Player ${i + 1}'),
+    );
+  }
+
+  @override
+  void dispose() {
+    for (final c in _nameControllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
 
   void _pickColor(int playerIndex, LudoColor color) {
     HapticsService.selection();
@@ -64,148 +85,10 @@ class _SetupScreenState extends State<SetupScreen> {
     });
   }
 
-  Widget _modeCard(String title, String subtitle, bool team) {
-    final selected = _teamMode == team;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          HapticsService.selection();
-          setState(() => _teamMode = team);
-        },
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? const Color(0xFFE9C46A)
-                : (widget.isDark ? const Color(0xFF141D2E) : Colors.white),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFFE9C46A)
-                  : (widget.isDark
-                      ? const Color(0xFF283650)
-                      : const Color(0xFFD6CEBD)),
-              width: selected ? 2.0 : 1.0,
-            ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: selected
-                      ? const Color(0xFF1A202C)
-                      : (widget.isDark ? Colors.white : const Color(0xFF1A202C)),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: selected
-                      ? const Color(0xFF1A202C)
-                      : (widget.isDark ? Colors.white70 : const Color(0xFF64748B)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Shows the two partner pairs. Partners always sit opposite:
-  /// seats 1&3 vs seats 2&4.
-  Widget _teamPreview(List<LudoColor> activeColors) {
-    Widget teamRow(String label, LudoColor a, LudoColor b) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE9C46A).withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFFE9C46A),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            _miniOrb(a),
-            const SizedBox(width: 6),
-            const Text('+', style: TextStyle(fontWeight: FontWeight.w900)),
-            const SizedBox(width: 6),
-            _miniOrb(b),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: widget.isDark ? const Color(0xFF141D2E) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: widget.isDark
-              ? const Color(0xFF283650)
-              : const Color(0xFFD6CEBD),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          teamRow('Team A', activeColors[0], activeColors[2]),
-          teamRow('Team B', activeColors[1], activeColors[3]),
-          const Text(
-            'Teammates can stack together and never capture each other.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniOrb(LudoColor c) {
-    return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: c.jewelGradient,
-        border: Border.all(color: Colors.white, width: 2),
-      ),
-      child: Center(
-        child: Text(
-          c.emblemGlyph,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            height: 1.0,
-          ),
-        ),
-      ),
-    );
-  }
-
   void _setPlayerCount(int count) {
     HapticsService.selection();
     setState(() {
       _playerCount = count;
-      if (count != 4) _teamMode = false;
       // Ensure active colors stay unique.
       final seen = <LudoColor>{};
       for (int i = 0; i < _playerCount; i++) {
@@ -216,32 +99,16 @@ class _SetupScreenState extends State<SetupScreen> {
         seen.add(_selectedColors[i]);
       }
       if (count == 2) {
-        // Default to opposite seats for balance if user hasn't customized.
+        // Opposite seats for a balanced duel (§1).
         _selectedColors[0] = LudoColor.red;
         _selectedColors[1] = LudoColor.yellow;
       }
+      if (count == 3) {
+        _selectedColors[0] = LudoColor.red;
+        _selectedColors[1] = LudoColor.green;
+        _selectedColors[2] = LudoColor.yellow;
+      }
     });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _initControllers();
-  }
-
-  void _initControllers() {
-    _nameControllers = List.generate(
-      4,
-      (i) => TextEditingController(text: 'Player ${i + 1}'),
-    );
-  }
-
-  @override
-  void dispose() {
-    for (final c in _nameControllers) {
-      c.dispose();
-    }
-    super.dispose();
   }
 
   void _showRulesDialog() {
@@ -250,15 +117,15 @@ class _SetupScreenState extends State<SetupScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: widget.isDark ? const Color(0xFF141D2E) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor:
+              widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
           title: const Row(
             children: [
               Text('🎲 ', style: TextStyle(fontSize: 22)),
-              Text(
-                'Ludu Rules',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
+              Text('Ludu Rules',
+                  style: TextStyle(fontWeight: FontWeight.w900)),
             ],
           ),
           content: const SingleChildScrollView(
@@ -268,31 +135,35 @@ class _SetupScreenState extends State<SetupScreen> {
               children: [
                 _RuleItem(
                   title: 'Pure Luck Guarantee',
-                  desc: 'Every roll uses cryptographically secure Random.secure(). Zero DDA, zero weighting, zero pity mechanics.',
+                  desc: 'Every roll uses cryptographically secure Random.secure(). Zero weighting, zero hidden help.',
+                ),
+                _RuleItem(
+                  title: 'First Player',
+                  desc: 'The starting player is chosen randomly. Turns run clockwise: Red, Green, Yellow, Blue.',
                 ),
                 _RuleItem(
                   title: 'Exit Base',
-                  desc: 'Roll a 6 to bring a token out of base.',
+                  desc: 'Roll a 6 to bring a token onto your start square.',
                 ),
                 _RuleItem(
                   title: 'Extra Turn',
-                  desc: 'Roll again when you roll a 6, capture an opponent, or bring a token home.',
+                  desc: 'Roll again after a 6 you actually move with, after a capture, or after reaching the center. Bonuses chain.',
                 ),
                 _RuleItem(
-                  title: 'Captures & Safe Stars',
-                  desc: 'Landing on an opponent sends them back to base. Star squares and each color start square are safe.',
+                  title: 'Captures & Safe Squares',
+                  desc: 'Landing exactly on an opponent sends them home. Passing over is safe. Start squares and stars are safe and can be shared.',
                 ),
                 _RuleItem(
                   title: 'Three 6s Rule',
-                  desc: 'Three consecutive 6s cancels the third roll and passes the turn.',
+                  desc: 'A third consecutive 6 is voided — no move — and the turn passes. Earlier moves stay.',
                 ),
                 _RuleItem(
                   title: 'Exact Roll to Finish',
-                  desc: 'Tokens need the exact number to enter the center. Overshoots cannot move.',
+                  desc: 'The center needs the exact number. Smaller rolls still move closer inside the home column.',
                 ),
                 _RuleItem(
                   title: 'Winning',
-                  desc: 'First player to bring all 4 tokens home wins.',
+                  desc: 'All 4 home takes the next rank. The game continues for 2nd and 3rd place.',
                 ),
               ],
             ),
@@ -318,6 +189,9 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     final List<LudoColor> activeColors = _activeColors;
+    final settings = ref.watch(settingsControllerProvider);
+    final settingsUpdater =
+        ref.read(settingsControllerProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -329,7 +203,9 @@ class _SetupScreenState extends State<SetupScreen> {
             onPressed: _showRulesDialog,
           ),
           IconButton(
-            icon: Icon(widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
+            icon: Icon(widget.isDark
+                ? Icons.light_mode_rounded
+                : Icons.dark_mode_rounded),
             tooltip: 'Toggle Theme',
             onPressed: widget.onToggleTheme,
           ),
@@ -337,11 +213,11 @@ class _SetupScreenState extends State<SetupScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header Logo / Slogan
               Center(
                 child: Column(
                   children: [
@@ -369,10 +245,8 @@ class _SetupScreenState extends State<SetupScreen> {
                         ],
                       ),
                       child: const Center(
-                        child: Text(
-                          '🎲',
-                          style: TextStyle(fontSize: 42),
-                        ),
+                        child: Text('🎲',
+                            style: TextStyle(fontSize: 42)),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -390,16 +264,20 @@ class _SetupScreenState extends State<SetupScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                        color: widget.isDark
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF64748B),
                         letterSpacing: 1.0,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 28),
-
-              // Player Count Selection
+              const SizedBox(height: 20),
+              _ResumeCard(
+                isDark: widget.isDark,
+                onResume: widget.onResumeGame,
+              ),
               const Text(
                 'NUMBER OF PLAYERS',
                 style: TextStyle(
@@ -415,21 +293,27 @@ class _SetupScreenState extends State<SetupScreen> {
                   final isSelected = _playerCount == count;
                   return Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 4.0),
                       child: InkWell(
                         onTap: () => _setPlayerCount(count),
                         borderRadius: BorderRadius.circular(14),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? const Color(0xFFE9C46A)
-                                : (widget.isDark ? const Color(0xFF141D2E) : Colors.white),
+                                : (widget.isDark
+                                    ? const Color(0xFF141D2E)
+                                    : Colors.white),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: isSelected
                                   ? const Color(0xFFE9C46A)
-                                  : (widget.isDark ? const Color(0xFF283650) : const Color(0xFFD6CEBD)),
+                                  : (widget.isDark
+                                      ? const Color(0xFF283650)
+                                      : const Color(0xFFD6CEBD)),
                               width: isSelected ? 2.0 : 1.0,
                             ),
                           ),
@@ -441,7 +325,9 @@ class _SetupScreenState extends State<SetupScreen> {
                                 fontWeight: FontWeight.w800,
                                 color: isSelected
                                     ? const Color(0xFF1A202C)
-                                    : (widget.isDark ? Colors.white : const Color(0xFF1A202C)),
+                                    : (widget.isDark
+                                        ? Colors.white
+                                        : const Color(0xFF1A202C)),
                               ),
                             ),
                           ),
@@ -452,32 +338,6 @@ class _SetupScreenState extends State<SetupScreen> {
                 }).toList(),
               ),
               const SizedBox(height: 24),
-
-              // Game mode: Solo or Team 2v2 (4 players only).
-              if (_playerCount == 4) ...[
-                const Text(
-                  'GAME MODE',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                    color: Color(0xFFE9C46A),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _modeCard('Solo', 'Everyone for themselves', false),
-                    const SizedBox(width: 10),
-                    _modeCard('Team 2v2', 'Partners opposite • 8 home wins', true),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                if (_teamMode) _teamPreview(activeColors),
-                const SizedBox(height: 24),
-              ],
-
-              // Player Name Inputs & Colors
               const Text(
                 'PLAYERS & SEATS',
                 style: TextStyle(
@@ -488,12 +348,12 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-
               ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _playerCount,
-                separatorBuilder: (context, index) => const SizedBox(height: 10),
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final color = activeColors[index];
                   return Container(
@@ -524,8 +384,7 @@ class _SetupScreenState extends State<SetupScreen> {
                                     color: Colors.white, width: 2),
                                 boxShadow: [
                                   BoxShadow(
-                                    color:
-                                        color.primary.withOpacity(0.45),
+                                    color: color.primary.withOpacity(0.45),
                                     blurRadius: 8,
                                   ),
                                 ],
@@ -565,7 +424,6 @@ class _SetupScreenState extends State<SetupScreen> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        // Color picker: tap to claim, tap taken to swap.
                         Row(
                           children: _allColors.map((c) {
                             final selected = c == color;
@@ -574,8 +432,7 @@ class _SetupScreenState extends State<SetupScreen> {
                               padding:
                                   const EdgeInsets.only(right: 10),
                               child: GestureDetector(
-                                onTap: () =>
-                                    _pickColor(index, c),
+                                onTap: () => _pickColor(index, c),
                                 child: Opacity(
                                   opacity:
                                       (!selected && taken) ? 0.45 : 1.0,
@@ -622,11 +479,6 @@ class _SetupScreenState extends State<SetupScreen> {
                 },
               ),
               const SizedBox(height: 20),
-
-              // Settings: sound + vibration toggles.
-              // Material (not Container) background so the SwitchListTiles
-              // paint their ink on a Material ancestor — otherwise the
-              // framework throws in debug builds.
               Material(
                 color: widget.isDark
                     ? const Color(0xFF141D2E)
@@ -643,66 +495,88 @@ class _SetupScreenState extends State<SetupScreen> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 6),
                   child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding:
-                          EdgeInsets.only(top: 8, bottom: 2),
-                      child: Text(
-                        'SETTINGS',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                          color: Color(0xFFE9C46A),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8, bottom: 2),
+                        child: Text(
+                          'SETTINGS',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                            color: Color(0xFFE9C46A),
+                          ),
                         ),
                       ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Sound effects',
-                          style:
-                              TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: const Text(
-                          'Dice, moves, captures, victory'),
-                      secondary: Icon(
-                        _soundOn
+                      _SettingsSwitch(
+                        title: 'Sound effects',
+                        subtitle: 'Dice, moves, captures, victory',
+                        icon: settings.sound
                             ? Icons.volume_up_rounded
                             : Icons.volume_off_rounded,
+                        value: settings.sound,
+                        onChanged: (v) {
+                          HapticsService.selection();
+                          settingsUpdater.update(
+                              settings.copyWith(sound: v));
+                        },
                       ),
-                      value: _soundOn,
-                      onChanged: (v) {
-                        setState(() => _soundOn = v);
-                        AudioService.setMuted(!v);
-                        HapticsService.selection();
-                      },
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Vibration',
-                          style:
-                              TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: const Text(
-                          'Light haptics for roll, move, capture'),
-                      secondary: Icon(
-                        _vibrationOn
+                      _SettingsSwitch(
+                        title: 'Vibration',
+                        subtitle:
+                            'Light haptics for roll, move, capture',
+                        icon: settings.vibration
                             ? Icons.vibration_rounded
                             : Icons.mobile_off_rounded,
+                        value: settings.vibration,
+                        onChanged: (v) {
+                          settingsUpdater.update(
+                              settings.copyWith(vibration: v));
+                          HapticsService.selection();
+                        },
                       ),
-                      value: _vibrationOn,
-                      onChanged: (v) {
-                        setState(() => _vibrationOn = v);
-                        HapticsService.setEnabled(v);
-                        HapticsService.selection();
-                      },
-                    ),
-                  ],
+                      _SettingsSwitch(
+                        title: 'Auto-move single option',
+                        subtitle:
+                            'Play it automatically when only one move is legal',
+                        icon: Icons.bolt_rounded,
+                        value: settings.autoMove,
+                        onChanged: (v) {
+                          HapticsService.selection();
+                          settingsUpdater.update(
+                              settings.copyWith(autoMove: v));
+                        },
+                      ),
+                      _SettingsSwitch(
+                        title: 'Block rule',
+                        subtitle:
+                            'Stacks of 2+ on a plain square cannot be landed on',
+                        icon: Icons.block_rounded,
+                        value: settings.blockRule,
+                        onChanged: (v) {
+                          HapticsService.selection();
+                          settingsUpdater.update(
+                              settings.copyWith(blockRule: v));
+                        },
+                      ),
+                      _SettingsSwitch(
+                        title: 'End game at first winner',
+                        subtitle:
+                            'Stop the match as soon as someone finishes',
+                        icon: Icons.emoji_events_rounded,
+                        value: settings.endAtFirstWinner,
+                        onChanged: (v) {
+                          HapticsService.selection();
+                          settingsUpdater.update(settings.copyWith(
+                              endAtFirstWinner: v));
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Start Game Button
               ElevatedButton(
                 onPressed: () {
                   HapticsService.medium();
@@ -716,16 +590,17 @@ class _SetupScreenState extends State<SetupScreen> {
                     playerCount: _playerCount,
                     playerNames: names,
                     playerColors: activeColors,
-                    teamMode: _teamMode && _playerCount == 4,
                   );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFE9C46A),
                   foregroundColor: const Color(0xFF131824),
                   padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   elevation: 6,
-                  shadowColor: const Color(0xFFE9C46A).withOpacity(0.4),
+                  shadowColor:
+                      const Color(0xFFE9C46A).withOpacity(0.4),
                 ),
                 child: const Text(
                   'START GAME',
@@ -741,6 +616,123 @@ class _SetupScreenState extends State<SetupScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Resume card (§10): appears only when an interrupted game is saved.
+class _ResumeCard extends ConsumerWidget {
+  final bool isDark;
+  final VoidCallback onResume;
+
+  const _ResumeCard({required this.isDark, required this.onResume});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FutureBuilder<GameState?>(
+      future: ref.read(persistenceProvider).loadGame(),
+      builder: (context, snapshot) {
+        final saved = snapshot.data;
+        if (saved == null || saved.phase != GamePhase.playing) {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF2A9D8F), Color(0xFF21867A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF2A9D8F).withOpacity(0.35),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.history_rounded,
+                  color: Colors.white, size: 30),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Interrupted game found',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      '${saved.players.length} players • '
+                      '${saved.players.map((p) => p.name).join(', ')}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () {
+                  HapticsService.medium();
+                  ref
+                      .read(gameControllerProvider.notifier)
+                      .restore(saved);
+                  onResume();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF21867A),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Resume',
+                    style: TextStyle(fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SettingsSwitch extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _SettingsSwitch({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(subtitle),
+      secondary: Icon(icon),
+      value: value,
+      onChanged: onChanged,
     );
   }
 }
