@@ -89,7 +89,7 @@ void main() {
       expect(_movablePawns, findsNWidgets(4));
 
       await tester.tap(_movablePawns.first);
-      await _pumpThrough(tester, 6);
+      await _pumpThrough(tester, 14);
       expect(_ctrl!.state.players[0].tokens[0].step, equals(0));
       // Rolled a 6: same player rolls again.
       expect(_ctrl!.state.currentPlayerIndex, equals(0));
@@ -101,7 +101,7 @@ void main() {
       expect(_movablePawns, findsOneWidget);
 
       await tester.tap(_movablePawns);
-      await _pumpThrough(tester, 8);
+      await _pumpThrough(tester, 18);
       expect(_ctrl!.state.players[0].tokens[0].step, equals(3));
       // Non-6 without capture/home: turn passes to player 2.
       expect(_ctrl!.state.currentPlayerIndex, equals(1));
@@ -131,7 +131,7 @@ void main() {
 
       // Tap the LAST movable pawn (token id 3), not the first.
       await tester.tap(_movablePawns.last);
-      await _pumpThrough(tester, 6);
+      await _pumpThrough(tester, 14);
 
       expect(_ctrl!.state.players[0].tokens[3].step, equals(0));
       expect(_ctrl!.state.players[0].tokens[0].step, equals(-1));

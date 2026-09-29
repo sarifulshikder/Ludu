@@ -65,7 +65,7 @@ class _DiceWidgetState extends State<DiceWidget>
   static bool get _inTest => isFlutterTest;
 
   Duration get _tossDuration => Duration(
-      milliseconds: (720 * widget.timeScale).round().clamp(200, 1200));
+      milliseconds: (1100 * widget.timeScale).round().clamp(400, 2000));
 
   @override
   void initState() {
@@ -162,7 +162,7 @@ class _DiceWidgetState extends State<DiceWidget>
     if (!widget.canRoll || _tossController.isAnimating) return;
     HapticsService.medium();
     _shuffleTimer?.cancel();
-    final interval = (70 * widget.timeScale).round().clamp(30, 120);
+    final interval = (120 * widget.timeScale).round().clamp(60, 200);
     _shuffleTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
       setState(() => _displayValue = _random.nextInt(6) + 1);
     });

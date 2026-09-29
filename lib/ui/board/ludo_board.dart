@@ -60,9 +60,9 @@ class _LudoBoardState extends State<LudoBoard>
   int _lastCaptures = 0;
   final Map<String, int> _lastHomeCounts = {};
 
-  static const int _baseStepMs = 150;
-  static const int _baseSettleMs = 160;
-  static const int _baseOutMs = 280;
+  static const int _baseStepMs = 280;
+  static const int _baseSettleMs = 260;
+  static const int _baseOutMs = 400;
 
   int get _stepMs =>
       (_baseStepMs * widget.timeScale).round().clamp(40, 400);
@@ -205,8 +205,9 @@ class _LudoBoardState extends State<LudoBoard>
         final double th = height / 15.0;
         final double tu = min(tw, th);
 
-        // Tokens fill 96% of the cell width for a big, prominent coin look
-        final double tokenSize = tw * 0.96;
+        // Tokens sized to the wider road cells (cols 6-9) for a big prominent coin
+        final double roadCellW = BoardLayout.cellWidth(7.0, width);
+        final double tokenSize = roadCellW * 0.90;
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(tu * 0.40),

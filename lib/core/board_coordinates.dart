@@ -1,6 +1,71 @@
 import 'dart:ui';
 import '../models/ludo_color.dart';
 
+class BoardLayout {
+  /// Proportions: Left yard 33%, Center road 34%, Right yard 33%.
+  /// This gives the 3 road lanes a 70% wider track while keeping the player
+  /// base yards compact and neat.
+  static const double yardFraction = 0.33;
+  static const double roadFraction = 0.34;
+
+  static double colLeft(double col, double totalW) {
+    final yardW = totalW * yardFraction;
+    final roadW = totalW * roadFraction;
+    final yardCell = yardW / 6.0;
+    final roadCell = roadW / 3.0;
+
+    if (col <= 6.0) {
+      return col * yardCell;
+    } else if (col <= 9.0) {
+      return yardW + (col - 6.0) * roadCell;
+    } else {
+      return yardW + roadW + (col - 9.0) * yardCell;
+    }
+  }
+
+  static double rowTop(double row, double totalH) {
+    final yardH = totalH * yardFraction;
+    final roadH = totalH * roadFraction;
+    final yardCell = yardH / 6.0;
+    final roadCell = roadH / 3.0;
+
+    if (row <= 6.0) {
+      return row * yardCell;
+    } else if (row <= 9.0) {
+      return yardH + (row - 6.0) * roadCell;
+    } else {
+      return yardH + roadH + (row - 9.0) * yardCell;
+    }
+  }
+
+  static double cellWidth(double col, double totalW) {
+    if (col >= 6.0 && col < 9.0) {
+      return (totalW * roadFraction) / 3.0;
+    }
+    return (totalW * yardFraction) / 6.0;
+  }
+
+  static double cellHeight(double row, double totalH) {
+    if (row >= 6.0 && row < 9.0) {
+      return (totalH * roadFraction) / 3.0;
+    }
+    return (totalH * yardFraction) / 6.0;
+  }
+
+  static Rect cellRect(double col, double row, double totalW, double totalH) {
+    final left = colLeft(col, totalW);
+    final top = rowTop(row, totalH);
+    final width = cellWidth(col, totalW);
+    final height = cellHeight(row, totalH);
+    return Rect.fromLTWH(left, top, width, height);
+  }
+
+  static Offset cellCenter(double col, double row, double totalW, double totalH) {
+    final rect = cellRect(col, row, totalW, totalH);
+    return rect.center;
+  }
+}
+
 class BoardPoint {
   final double row;
   final double col;
@@ -8,12 +73,12 @@ class BoardPoint {
   const BoardPoint(this.row, this.col);
 
   Offset toOffset(double tileSize) {
-    return Offset(col * tileSize + tileSize / 2, row * tileSize + tileSize / 2);
+    return toOffsetXY(tileSize, tileSize);
   }
 
-  /// Cell center on a tall board with independent column/row pitch (§8).
+  /// Cell center with wide road and compact player bases.
   Offset toOffsetXY(double tileW, double tileH) {
-    return Offset(col * tileW + tileW / 2, row * tileH + tileH / 2);
+    return BoardLayout.cellCenter(col, row, tileW * 15.0, tileH * 15.0);
   }
 }
 

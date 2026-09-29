@@ -88,57 +88,61 @@ class BoardPainter extends CustomPainter {
 
   // --- Corner yards: 6x6 cells in each corner ----------------------------
   void _drawYards(Canvas canvas, double tw, double th, double tu) {
+    final totalW = tw * 15.0;
+    final totalH = th * 15.0;
     void yard(double col, double row, LudoColor color) {
       final isActive = activeColor == color;
       final themeColor = _cfg.colorOf(color);
-      final outer = Rect.fromLTWH(col * tw, row * th, tw * 6, th * 6);
+      // Use BoardLayout so the yard rect matches the non-uniform grid
+      final left = BoardLayout.colLeft(col, totalW);
+      final top = BoardLayout.rowTop(row, totalH);
+      final right = BoardLayout.colLeft(col + 6, totalW);
+      final bottom = BoardLayout.rowTop(row + 6, totalH);
+      final outer = Rect.fromLTRB(left, top, right, bottom);
 
-      final glass = LinearGradient(
-        colors: [
-          Color.alphaBlend(
-            themeColor.primary.withOpacity(0.65),
-            _cfg.boardBezelStart,
-          ),
-          Color.alphaBlend(
-            themeColor.darkShade.withOpacity(0.85),
-            _cfg.boardBezelEnd,
-          ),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
+      // Hard vivid fill — just the pure player color, no dark blending
       final outerR =
           RRect.fromRectAndRadius(outer, Radius.circular(tu * _cfg.yardBezelRadius));
-      canvas.drawRRect(outerR, Paint()..shader = glass.createShader(outer));
+      canvas.drawRRect(
+        outerR,
+        Paint()
+          ..shader = LinearGradient(
+            colors: [
+              themeColor.primary,
+              themeColor.darkShade,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(outer),
+      );
 
       // Active-turn neon/gold rim
       if (isActive) {
         canvas.drawRRect(
           outerR,
           Paint()
-            ..color = themeColor.primary
+            ..color = Colors.white
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(2.4, tu * 0.12)
-            ..maskFilter = MaskFilter.blur(BlurStyle.normal, tu * 0.06),
+            ..strokeWidth = max(3.0, tu * 0.14)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, tu * 0.07),
         );
       }
       canvas.drawRRect(
         outerR,
         Paint()
-          ..color = _cfg.boardInlayLine.withOpacity(0.50)
+          ..color = Colors.white.withOpacity(0.45)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0,
+          ..strokeWidth = 1.5,
       );
 
-      // Inner holding panel
-      final panel = Rect.fromLTWH(
-        (col + 0.65) * tw,
-        (row + 0.65) * th,
-        tw * 4.7,
-        th * 4.7,
-      );
+      // Inner holding panel — dark neutral so coins pop
+      final panelLeft = left + (right - left) * 0.10;
+      final panelTop = top + (bottom - top) * 0.10;
+      final panelW = (right - left) * 0.80;
+      final panelH = (bottom - top) * 0.80;
+      final panel = Rect.fromLTWH(panelLeft, panelTop, panelW, panelH);
       final panelR =
-          RRect.fromRectAndRadius(panel, Radius.circular(tu * 0.32));
+          RRect.fromRectAndRadius(panel, Radius.circular(tu * 0.28));
       canvas.drawRRect(
         panelR,
         Paint()
@@ -151,38 +155,41 @@ class BoardPainter extends CustomPainter {
       canvas.drawRRect(
         panelR,
         Paint()
-          ..color = _cfg.yardPanelBorder.withOpacity(0.6)
+          ..color = Colors.white.withOpacity(0.50)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2,
       );
 
       // Deep token wells (2x2 base slots)
+      // Radius sized to the road cell (wider), not the yard cell
+      final roadCellW = BoardLayout.cellWidth(7.0, totalW);
+      final wellR = roadCellW * 0.52;
       for (final slot in BoardCoordinates.baseSlots[color]!) {
         final c = slot.toOffsetXY(tw, th);
         // Well recessed cavity
         canvas.drawCircle(
           c,
-          tu * 0.54,
+          wellR,
           Paint()..color = _cfg.tokenWellColor,
         );
         // Well rim
         canvas.drawCircle(
           c,
-          tu * 0.54,
+          wellR,
           Paint()
-            ..color = themeColor.primary.withOpacity(0.85)
+            ..color = Colors.white.withOpacity(0.90)
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(1.8, tu * 0.08),
+            ..strokeWidth = max(2.0, tu * 0.09),
         );
         if (isActive) {
           canvas.drawCircle(
             c,
-            tu * 0.60,
+            wellR * 1.15,
             Paint()
-              ..color = themeColor.primary.withOpacity(0.55)
+              ..color = Colors.white.withOpacity(0.60)
               ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.5
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+              ..strokeWidth = 2.0
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
           );
         }
       }
@@ -196,12 +203,15 @@ class BoardPainter extends CustomPainter {
 
   // --- Track: pearl cells with razor-thin borders (0.8 dp) ----------------
   void _drawTrackCells(Canvas canvas, double tw, double th, double tu) {
+    final totalW = tw * 15.0;
+    final totalH = th * 15.0;
     for (final pt in BoardCoordinates.outerTrack) {
+      final cellR = BoardLayout.cellRect(pt.col, pt.row, totalW, totalH);
       final rect = Rect.fromLTWH(
-        pt.col * tw + 0.4,
-        pt.row * th + 0.4,
-        tw - 0.8,
-        th - 0.8,
+        cellR.left + 0.4,
+        cellR.top + 0.4,
+        cellR.width - 0.8,
+        cellR.height - 0.8,
       );
       final rrect =
           RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.12));
@@ -218,8 +228,8 @@ class BoardPainter extends CustomPainter {
 
       // Subtle top highlight sheen
       canvas.drawLine(
-        Offset(rect.left + tw * 0.15, rect.top + 1.0),
-        Offset(rect.right - tw * 0.15, rect.top + 1.0),
+        Offset(rect.left + cellR.width * 0.15, rect.top + 1.0),
+        Offset(rect.right - cellR.width * 0.15, rect.top + 1.0),
         Paint()
           ..color = _cfg.cellHighlightLine
           ..strokeWidth = 1.0
@@ -237,18 +247,22 @@ class BoardPainter extends CustomPainter {
     }
   }
 
+
   // --- Home stretches: 5-cell lanes to center -----------------------------
   void _drawHomeStretches(Canvas canvas, double tw, double th, double tu) {
+    final totalW = tw * 15.0;
+    final totalH = th * 15.0;
     for (final entry in BoardCoordinates.homeStretches.entries) {
       final color = entry.key;
       final themeColor = _cfg.colorOf(color);
       for (int i = 0; i < entry.value.length; i++) {
         final pt = entry.value[i];
+        final cellR = BoardLayout.cellRect(pt.col, pt.row, totalW, totalH);
         final rect = Rect.fromLTWH(
-          pt.col * tw + 0.5,
-          pt.row * th + 0.5,
-          tw - 1.0,
-          th - 1.0,
+          cellR.left + 0.5,
+          cellR.top + 0.5,
+          cellR.width - 1.0,
+          cellR.height - 1.0,
         );
         final rrect =
             RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.14));
@@ -285,6 +299,7 @@ class BoardPainter extends CustomPainter {
       }
     }
   }
+
 
   void _chevron(
       Canvas canvas, Offset c, double s, Color color, LudoColor owner) {
@@ -392,14 +407,17 @@ class BoardPainter extends CustomPainter {
 
   // --- Safe stars: prominent foil / neon / brass stars ---------------------
   void _drawSafeStars(Canvas canvas, double tw, double th, double tu) {
+    final totalW = tw * 15.0;
+    final totalH = th * 15.0;
     for (final index in BoardCoordinates.safeSquares) {
       if (_startColorFor(index) != null) continue;
       final pt = BoardCoordinates.outerTrack[index];
       final c = pt.toOffsetXY(tw, th);
+      final cellR = BoardLayout.cellRect(pt.col, pt.row, totalW, totalH);
       final rect = Rect.fromCenter(
         center: c,
-        width: tw - 1.0,
-        height: th - 1.0,
+        width: cellR.width - 1.0,
+        height: cellR.height - 1.0,
       );
       final rrect =
           RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.14));
@@ -437,6 +455,7 @@ class BoardPainter extends CustomPainter {
     }
   }
 
+
   // --- Start cells: glowing launch square with directional arrow ---------
   LudoColor? _startColorFor(int index) {
     if (index == LudoColor.red.startSquare) return LudoColor.red;
@@ -447,16 +466,19 @@ class BoardPainter extends CustomPainter {
   }
 
   void _drawStartCells(Canvas canvas, double tw, double th, double tu) {
+    final totalW = tw * 15.0;
+    final totalH = th * 15.0;
     for (int i = 0; i < BoardCoordinates.outerTrack.length; i++) {
       final color = _startColorFor(i);
       if (color == null) continue;
       final themeColor = _cfg.colorOf(color);
       final pt = BoardCoordinates.outerTrack[i];
       final c = pt.toOffsetXY(tw, th);
+      final cellR = BoardLayout.cellRect(pt.col, pt.row, totalW, totalH);
       final rect = Rect.fromCenter(
         center: c,
-        width: tw - 1.0,
-        height: th - 1.0,
+        width: cellR.width - 1.0,
+        height: cellR.height - 1.0,
       );
       final rrect =
           RRect.fromRectAndRadius(rect, Radius.circular(tu * 0.14));
@@ -483,6 +505,7 @@ class BoardPainter extends CustomPainter {
       _arrow(canvas, c, tu * 0.32, Colors.white, i);
     }
   }
+
 
   void _arrow(
       Canvas canvas, Offset centre, double size, Color color, int index) {

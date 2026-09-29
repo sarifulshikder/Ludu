@@ -353,7 +353,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         !_passFreeze;
 
     final screenHeight = MediaQuery.of(context).size.height;
-    final double diceSize = (screenHeight * 0.12).clamp(94.0, 110.0);
+    final double diceSize = (screenHeight * 0.095).clamp(76.0, 92.0);
 
     // Is active dice in top half of screen (Red or Green)?
     final isTopActive = activePlayer.color == LudoColor.red ||
