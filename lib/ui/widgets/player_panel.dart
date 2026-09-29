@@ -65,7 +65,7 @@ class PlayerPanel extends StatelessWidget {
     Widget chipContent = AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: cfg.surfaceCard,
         gradient: LinearGradient(
@@ -111,11 +111,11 @@ class PlayerPanel extends StatelessWidget {
             // Pawn avatar icon
             PinAvatar(
               color: color,
-              size: 28,
+              size: 26,
               isDark: isDark,
               themePlayerColor: themeColor,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             // Name + team badge + progress pills
             Expanded(
               child: Column(
@@ -130,9 +130,9 @@ class PlayerPanel extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 12.0,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
+                            letterSpacing: 0.2,
                             color: isActive
                                 ? Colors.white
                                 : Colors.white.withOpacity(0.88),
@@ -157,7 +157,7 @@ class PlayerPanel extends StatelessWidget {
                         const SizedBox(width: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1.5),
+                              horizontal: 4, vertical: 1),
                           decoration: BoxDecoration(
                             color: themeColor.primary.withOpacity(0.25),
                             borderRadius: BorderRadius.circular(4),
@@ -169,9 +169,9 @@ class PlayerPanel extends StatelessWidget {
                           child: Text(
                             'TURN',
                             style: TextStyle(
-                              fontSize: 9,
+                              fontSize: 8.5,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 0.8,
+                              letterSpacing: 0.5,
                               color: themeColor.lightGlow,
                             ),
                           ),
@@ -220,18 +220,17 @@ class _TeamBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Player.teamAccent(teamId);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: color.withOpacity(0.20),
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: color.withOpacity(0.85), width: 0.9),
       ),
       child: Text(
-        Player.teamName(teamId).toUpperCase(),
+        teamId == 0 ? 'A' : 'B',
         style: TextStyle(
-          fontSize: 9,
+          fontSize: 9.5,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.6,
           color: color,
         ),
       ),
@@ -239,8 +238,8 @@ class _TeamBadge extends StatelessWidget {
   }
 }
 
-/// 4 Progress pills (one per token) inside the player chip.
-/// Fills when that token reaches the center home.
+/// Home-progress pills (§A4): one per token, filled only when that token
+/// reaches center home. Uses Expanded pills per row so it never overflows.
 class ProgressPills extends StatelessWidget {
   final List<bool> homeFlags;
   final Color fill;
@@ -259,18 +258,36 @@ class ProgressPills extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (int i = 0; i < homeFlags.length; i++) ...[
-          if (i > 0) const SizedBox(width: 4),
-          _Pill(
-            filled: homeFlags[i],
-            fill: fill,
-            idle: idle,
+    final count = homeFlags.length;
+    const perRow = 4;
+    final rowCount = (count / perRow).ceil();
+    final rows = <Widget>[];
+
+    for (int r = 0; r < rowCount; r++) {
+      final rowChildren = <Widget>[];
+      for (int c = 0; c < perRow; c++) {
+        final idx = r * perRow + c;
+        if (idx >= count) break;
+        if (c > 0) rowChildren.add(const SizedBox(width: 3));
+        rowChildren.add(
+          Expanded(
+            child: _Pill(
+              filled: homeFlags[idx],
+              fill: fill,
+              idle: idle,
+              height: count > 4 ? 4.0 : 5.5,
+            ),
           ),
-        ],
-      ],
+        );
+      }
+      if (r > 0) rows.add(const SizedBox(height: 2));
+      rows.add(Row(children: rowChildren));
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
     );
   }
 }
@@ -279,27 +296,28 @@ class _Pill extends StatelessWidget {
   final bool filled;
   final Color fill;
   final Color idle;
+  final double height;
 
   const _Pill({
     required this.filled,
     required this.fill,
     required this.idle,
+    this.height = 5.5,
   });
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      width: 14,
-      height: 5.5,
+      height: height,
       decoration: BoxDecoration(
         color: filled ? fill : idle,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(height / 2),
         boxShadow: filled
             ? [
                 BoxShadow(
                   color: fill.withOpacity(0.65),
-                  blurRadius: 4,
+                  blurRadius: 3,
                   offset: const Offset(0, 0.5),
                 ),
               ]
