@@ -65,16 +65,22 @@ class _LuduAppState extends State<LuduApp> {
   @override
   Widget build(BuildContext context) {
     return ProviderScope(
-      child: MaterialApp(
-        title: 'Ludu',
-        debugShowCheckedModeBanner: false,
-        theme: LuduTheme.lightTheme,
-        darkTheme: LuduTheme.darkTheme,
-        themeMode: _themeMode,
-        home: LuduMainNavigator(
-          onToggleTheme: _toggleTheme,
-          isDark: _themeMode == ThemeMode.dark,
-        ),
+      child: Consumer(
+        builder: (context, ref, child) {
+          final settings = ref.watch(settingsControllerProvider);
+          final activeTheme = LuduTheme.getTheme(settings.appTheme);
+          return MaterialApp(
+            title: 'Ludu',
+            debugShowCheckedModeBanner: false,
+            theme: activeTheme,
+            darkTheme: activeTheme,
+            themeMode: ThemeMode.dark,
+            home: LuduMainNavigator(
+              onToggleTheme: _toggleTheme,
+              isDark: true,
+            ),
+          );
+        },
       ),
     );
   }

@@ -1,27 +1,28 @@
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../core/env.dart';
+import '../../core/theme/ludu_theme.dart';
+import '../../models/game_settings.dart';
 import '../../models/ludo_color.dart';
 import '../../models/token.dart';
 import '../../services/haptics_service.dart';
 
-/// Large 3D glossy pawn (§9) — a real game-piece silhouette, not a circle.
+/// Large 3D Pawn Piece styled for the active theme.
 ///
-/// * Classic pawn profile: round head, tapered body, stepped base.
-/// * Vertical gloss gradient + top-left specular + soft ground shadow.
-/// * Color-blind double-coding: a unique emblem glyph (▲ ● ★ ■) baked onto
-///   the body, plus staggered luminance per color.
-/// * Movable pawns get a pulsing golden halo + gentle bounce.
+/// * Almost fills a cell (~90–95% of cell width).
+/// * Small lift on movable tokens + golden/neon pulsing aura.
+/// * Jewel gloss for Royal Gold, glowing frosted acrylic for Neon Glass,
+///   lathe-turned wood with brass collar for Wooden Luxe.
+/// * Color-blind double-coding: unique emblem glyph (▲ ● ★ ■).
 class TokenWidget extends StatefulWidget {
   final Token token;
   final double size;
   final bool isMovable;
-
-  /// Gold follow ring for the last committed move (§F).
   final bool isLastMoved;
   final VoidCallback? onTap;
+  final AppThemeMode themeMode;
+  final ThemePlayerColor? themePlayerColor;
 
   const TokenWidget({
     super.key,
@@ -30,6 +31,8 @@ class TokenWidget extends StatefulWidget {
     this.isMovable = false,
     this.isLastMoved = false,
     this.onTap,
+    this.themeMode = AppThemeMode.royalGold,
+    this.themePlayerColor,
   });
 
   @override
@@ -42,8 +45,6 @@ class _TokenWidgetState extends State<TokenWidget>
   late Animation<double> _pulseScale;
 
   void _startPulse() {
-    // In widget tests an endlessly repeating animation would make
-    // pumpAndSettle() hang, so settle the controller once instead.
     if (isFlutterTest) {
       _pulseController.forward();
     } else {
@@ -58,7 +59,7 @@ class _TokenWidgetState extends State<TokenWidget>
       vsync: this,
       duration: const Duration(milliseconds: 720),
     );
-    _pulseScale = Tween<double>(begin: 1.0, end: 1.12).animate(
+    _pulseScale = Tween<double>(begin: 1.0, end: 1.10).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     if (widget.isMovable) _startPulse();
@@ -92,7 +93,6 @@ class _TokenWidgetState extends State<TokenWidget>
   @override
   Widget build(BuildContext context) {
     final w = widget.size;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final pad = (math.max(48.0, w) - w) / 2;
 
     return Stack(
@@ -104,10 +104,10 @@ class _TokenWidgetState extends State<TokenWidget>
             final bounce = widget.isMovable ? _pulseScale.value : 1.0;
             return Transform.scale(
               scale: bounce,
-              // Pop-up lift while selectable so it reads from afar.
+              // Small lift on movable tokens
               child: Transform.translate(
                 offset: widget.isMovable
-                    ? Offset(0, -w * 0.9 * (_pulseScale.value - 1.0))
+                    ? const Offset(0, -3.5)
                     : Offset.zero,
                 child: SizedBox(
                   width: w,
@@ -116,11 +116,13 @@ class _TokenWidgetState extends State<TokenWidget>
                     size: Size(w, w),
                     painter: _PawnPainter(
                       color: widget.token.color,
+                      themePlayerColor: widget.themePlayerColor,
+                      themeMode: widget.themeMode,
                       isHome: widget.token.isHome,
                       number: widget.token.id + 1,
                       selectable: widget.isMovable,
                       isLastMoved: widget.isLastMoved,
-                      shadow: isDark ? 0.42 : 0.30,
+                      shadow: 0.38,
                     ),
                   ),
                 ),
@@ -145,6 +147,8 @@ class _TokenWidgetState extends State<TokenWidget>
 
 class _PawnPainter extends CustomPainter {
   final LudoColor color;
+  final ThemePlayerColor? themePlayerColor;
+  final AppThemeMode themeMode;
   final bool isHome;
   final int number;
   final bool selectable;
@@ -153,6 +157,8 @@ class _PawnPainter extends CustomPainter {
 
   _PawnPainter({
     required this.color,
+    this.themePlayerColor,
+    this.themeMode = AppThemeMode.royalGold,
     required this.isHome,
     required this.number,
     required this.selectable,
@@ -165,128 +171,135 @@ class _PawnPainter extends CustomPainter {
     final w = size.width;
     final cx = w / 2;
 
-    // Soft ground shadow.
+    final primary = themePlayerColor?.primary ?? color.primary;
+    final dark = themePlayerColor?.darkShade ?? color.darkShade;
+    final glow = themePlayerColor?.lightGlow ?? color.lightGlow;
+    final highlight = themePlayerColor?.highlight ?? color.orbHighlight;
+    final accentRing = themePlayerColor?.accentRing ?? const Color(0xFFF2C14E);
+
+    // Ground drop shadow (increases when lifted)
+    final shadowScale = selectable ? 1.25 : 1.0;
     canvas.drawOval(
       Rect.fromCenter(
-        center: Offset(cx, w * 0.90),
-        width: w * 0.66,
-        height: w * 0.15,
+        center: Offset(cx, w * (selectable ? 0.94 : 0.90)),
+        width: w * 0.66 * shadowScale,
+        height: w * 0.15 * shadowScale,
       ),
       Paint()
-        ..color = Colors.black.withOpacity(shadow)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.06),
+        ..color = Colors.black.withOpacity(selectable ? 0.48 : shadow)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * (selectable ? 0.09 : 0.06)),
     );
 
-    // Last-move follow ring (§F): a crisp gold oval at the pawn's feet.
+    // Last-move follow ring
     if (isLastMoved && !selectable) {
       canvas.drawOval(
         Rect.fromCenter(
-            center: Offset(cx, w * 0.50),
-            width: w * 1.04,
-            height: w * 1.08),
+          center: Offset(cx, w * 0.50),
+          width: w * 1.04,
+          height: w * 1.08,
+        ),
         Paint()
-          ..color = const Color(0xFFF2C14E).withOpacity(0.95)
+          ..color = accentRing.withOpacity(0.95)
           ..style = PaintingStyle.stroke
           ..strokeWidth = math.max(2.2, w * 0.06),
       );
     }
 
-    // Selectable golden halo.
+    // Selectable pulsing halo
     if (selectable) {
       canvas.drawOval(
         Rect.fromCenter(
-            center: Offset(cx, w * 0.50),
-            width: w * 1.18,
-            height: w * 1.22),
+          center: Offset(cx, w * 0.50),
+          width: w * 1.18,
+          height: w * 1.22,
+        ),
         Paint()
-          ..color = const Color(0xFFF2C14E).withOpacity(0.55)
+          ..color = accentRing.withOpacity(0.55)
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.08),
       );
       canvas.drawOval(
         Rect.fromCenter(
-            center: Offset(cx, w * 0.50),
-            width: w * 1.02,
-            height: w * 1.06),
+          center: Offset(cx, w * 0.50),
+          width: w * 1.02,
+          height: w * 1.06,
+        ),
         Paint()
-          ..color = Colors.white.withOpacity(0.85)
+          ..color = Colors.white.withOpacity(0.90)
           ..style = PaintingStyle.stroke
           ..strokeWidth = math.max(2.0, w * 0.05),
       );
     }
 
-    // Body: tapered pawn torso with rounded shoulders.
+    // Tapered pawn torso
     final body = Path()
       ..moveTo(cx - w * 0.30, w * 0.86)
       ..lineTo(cx - w * 0.155, w * 0.46)
-      ..quadraticBezierTo(
-          cx - w * 0.14, w * 0.40, cx - w * 0.10, w * 0.385)
+      ..quadraticBezierTo(cx - w * 0.14, w * 0.40, cx - w * 0.10, w * 0.385)
       ..lineTo(cx + w * 0.10, w * 0.385)
-      ..quadraticBezierTo(
-          cx + w * 0.14, w * 0.40, cx + w * 0.155, w * 0.46)
+      ..quadraticBezierTo(cx + w * 0.14, w * 0.40, cx + w * 0.155, w * 0.46)
       ..lineTo(cx + w * 0.30, w * 0.86)
       ..quadraticBezierTo(cx, w * 0.92, cx - w * 0.30, w * 0.86)
       ..close();
+
     canvas.drawPath(
       body,
       Paint()
         ..shader = LinearGradient(
-          colors: [color.lightGlow, color.primary, color.darkShade],
+          colors: [glow, primary, dark],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ).createShader(body.getBounds()),
     );
-    // Belly shading (lower crescent) for roundness.
+
+    // Torso specular & shading
     canvas.save();
     canvas.clipPath(body);
     canvas.drawOval(
       Rect.fromCenter(
-          center: Offset(cx + w * 0.10, w * 0.86),
-          width: w * 0.62,
-          height: w * 0.50),
-      Paint()..color = Colors.black.withOpacity(0.20),
+        center: Offset(cx + w * 0.10, w * 0.86),
+        width: w * 0.62,
+        height: w * 0.50,
+      ),
+      Paint()..color = Colors.black.withOpacity(0.22),
     );
-    // Gloss stripe down the left of the torso.
     canvas.drawOval(
       Rect.fromCenter(
-          center: Offset(cx - w * 0.13, w * 0.62),
-          width: w * 0.10,
-          height: w * 0.30),
-      Paint()..color = Colors.white.withOpacity(0.45),
+        center: Offset(cx - w * 0.10, w * 0.60),
+        width: w * 0.12,
+        height: w * 0.40,
+      ),
+      Paint()..color = highlight.withOpacity(0.60),
     );
     canvas.restore();
-    // Crisp rim.
-    canvas.drawPath(
-      body,
+
+    // Collar ring around neck
+    final collar = Rect.fromCenter(
+      center: Offset(cx, w * 0.385),
+      width: w * 0.28,
+      height: w * 0.07,
+    );
+    canvas.drawOval(
+      collar,
+      Paint()..color = accentRing,
+    );
+    canvas.drawOval(
+      collar,
       Paint()
-        ..color = color.darkShade
+        ..color = Colors.white.withOpacity(0.65)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.6, w * 0.045),
+        ..strokeWidth = math.max(1.0, w * 0.025),
     );
 
-    // Collar ring under the head.
-    canvas.drawOval(
-      Rect.fromCenter(
-          center: Offset(cx, w * 0.40), width: w * 0.30, height: w * 0.10),
-      Paint()..color = color.darkShade,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-          center: Offset(cx, w * 0.392),
-          width: w * 0.30,
-          height: w * 0.085),
-      Paint()..color = color.lightGlow,
-    );
-
-    // Head: glossy ball.
-    final headC = Offset(cx, w * 0.245);
-    final headR = w * 0.155;
+    // Head orb
+    final headC = Offset(cx, w * 0.24);
+    final headR = w * 0.21;
     canvas.drawCircle(
       headC,
       headR,
       Paint()
         ..shader = RadialGradient(
-          colors: [color.orbHighlight, color.primary, color.darkShade],
-          stops: const [0.0, 0.5, 1.0],
+          colors: [highlight, primary, dark],
+          stops: const [0.0, 0.45, 1.0],
           center: const Alignment(-0.35, -0.4),
           radius: 1.1,
         ).createShader(Rect.fromCircle(center: headC, radius: headR)),
@@ -295,20 +308,21 @@ class _PawnPainter extends CustomPainter {
       headC,
       headR,
       Paint()
-        ..color = color.darkShade
+        ..color = accentRing.withOpacity(0.85)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.4, w * 0.04),
+        ..strokeWidth = math.max(1.4, w * 0.038),
     );
+    // Specular shine on head
     canvas.drawOval(
       Rect.fromCenter(
         center: headC + Offset(-headR * 0.32, -headR * 0.38),
         width: headR * 0.85,
         height: headR * 0.55,
       ),
-      Paint()..color = Colors.white.withOpacity(0.8),
+      Paint()..color = Colors.white.withOpacity(0.82),
     );
 
-    // Stepped base.
+    // Stepped base
     final base = RRect.fromRectAndRadius(
       Rect.fromLTWH(cx - w * 0.30, w * 0.82, w * 0.60, w * 0.10),
       Radius.circular(w * 0.05),
@@ -317,7 +331,7 @@ class _PawnPainter extends CustomPainter {
       base,
       Paint()
         ..shader = LinearGradient(
-          colors: [color.primary, color.darkShade],
+          colors: [primary, dark],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ).createShader(base.outerRect),
@@ -325,27 +339,27 @@ class _PawnPainter extends CustomPainter {
     canvas.drawRRect(
       base,
       Paint()
-        ..color = Colors.white.withOpacity(0.35)
+        ..color = accentRing
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.0, w * 0.025),
+        ..strokeWidth = math.max(1.2, w * 0.03),
     );
 
-    // Shape-coded emblem on the belly (color-blind aid).
+    // Shape-coded emblem on the belly
     _emblemText(
       canvas,
       Offset(cx, w * 0.60),
       color.emblemGlyph,
       w * 0.20,
-      Colors.white.withOpacity(0.92),
+      Colors.white.withOpacity(0.95),
     );
 
     if (number == 0) {
-      // Avatar mode: bold emblem, nothing else.
+      // Avatar mode
       _emblemText(canvas, Offset(cx, w * 0.62), color.emblemGlyph,
           w * 0.30, Colors.white);
     } else if (isHome) {
       _star(canvas, Offset(cx, w * 0.74), w * 0.10,
-          Paint()..color = Colors.white);
+          Paint()..color = accentRing);
     } else {
       _number(canvas, Offset(cx, w * 0.755), '$number', w);
     }
@@ -360,7 +374,7 @@ class _PawnPainter extends CustomPainter {
           fontSize: w * 0.15,
           fontWeight: FontWeight.w900,
           height: 1.0,
-          shadows: const [Shadow(color: Colors.black54, blurRadius: 3)],
+          shadows: const [Shadow(color: Colors.black87, blurRadius: 4)],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -378,7 +392,7 @@ class _PawnPainter extends CustomPainter {
             fontSize: fontSize,
             fontWeight: FontWeight.w900,
             height: 1.0,
-            shadows: const [Shadow(color: Colors.black38, blurRadius: 2)]),
+            shadows: const [Shadow(color: Colors.black54, blurRadius: 3)]),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -408,23 +422,27 @@ class _PawnPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _PawnPainter old) =>
       old.color != color ||
+      old.themePlayerColor != themePlayerColor ||
+      old.themeMode != themeMode ||
       old.isHome != isHome ||
       old.number != number ||
       old.selectable != selectable ||
       old.isLastMoved != isLastMoved;
 }
 
-/// Compact pawn avatar for player cards.
+/// Compact pawn avatar for player chips and cards.
 class PinAvatar extends StatelessWidget {
   final LudoColor color;
   final double size;
   final bool isDark;
+  final ThemePlayerColor? themePlayerColor;
 
   const PinAvatar({
     super.key,
     required this.color,
     required this.size,
     this.isDark = true,
+    this.themePlayerColor,
   });
 
   @override
@@ -435,10 +453,11 @@ class PinAvatar extends StatelessWidget {
       child: CustomPaint(
         painter: _PawnPainter(
           color: color,
+          themePlayerColor: themePlayerColor,
           isHome: false,
           number: 0,
           selectable: false,
-          shadow: isDark ? 0.35 : 0.22,
+          shadow: 0.35,
         ),
       ),
     );

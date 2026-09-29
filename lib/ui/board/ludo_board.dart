@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../core/board_coordinates.dart';
+import '../../core/theme/ludu_theme.dart';
+import '../../models/game_settings.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
 import '../../models/player.dart';
@@ -11,16 +13,12 @@ import '../../services/haptics_service.dart';
 import 'board_painter.dart';
 import 'token_widget.dart';
 
-/// Tall premium board (§8).
+/// Perfectly Square 15×15 Ludo Board.
 ///
-/// * Classic 15×15 cross layout on tall 1:1.33 cells — fills a portrait
-///   phone edge to edge. Dice live in the player panels above/below, so
-///   the board carries only yards, track, tokens and labels.
-/// * Chunky 3D pawns with a neat 2×2 mini-grid on shared squares.
-/// * Discrete hop animation: each step lands and settles before the next.
-///   The move commits to game state only after the visual lands, and all
-///   other inputs are locked out via [onAnimatingChanged] while hopping so
-///   a tap can never act on a stale position.
+/// * Edge to edge across screen width, with no outer margin.
+/// * Maximized path cells and tokens (tokens fill ~94% of cell width).
+/// * Discrete hop animation lands and settles on each square.
+/// * Integrated with Royal Gold, Neon Glass, and Wooden Luxe themes.
 class LudoBoard extends StatefulWidget {
   final GameState gameState;
   final Function(int tokenId) onTokenSelected;
@@ -29,12 +27,18 @@ class LudoBoard extends StatefulWidget {
   /// Animation duration multiplier (1.0 normal, ~0.55 fast).
   final double timeScale;
 
+  /// Active premium theme.
+  final AppThemeMode themeMode;
+  final LuduThemeConfig? themeConfig;
+
   const LudoBoard({
     super.key,
     required this.gameState,
     required this.onTokenSelected,
     this.onAnimatingChanged,
     this.timeScale = 1.0,
+    this.themeMode = AppThemeMode.royalGold,
+    this.themeConfig,
   });
 
   @override
@@ -64,6 +68,9 @@ class _LudoBoardState extends State<LudoBoard>
       (_baseSettleMs * widget.timeScale).round().clamp(40, 400);
   int get _outMs =>
       (_baseOutMs * widget.timeScale).round().clamp(60, 600);
+
+  LuduThemeConfig get _cfg =>
+      widget.themeConfig ?? LuduTheme.forMode(widget.themeMode);
 
   @override
   void initState() {
@@ -115,7 +122,7 @@ class _LudoBoardState extends State<LudoBoard>
 
   @override
   void dispose() {
-    _hopGeneration++; // Invalidate any in-flight hop callbacks.
+    _hopGeneration++;
     _hopTimer?.cancel();
     _burstController.dispose();
     super.dispose();
@@ -151,80 +158,64 @@ class _LudoBoardState extends State<LudoBoard>
     _setAnimating(true);
 
     if (startStep == -1) {
-      _hopTimer?.cancel();
       AudioService.playTokenOut();
       HapticsService.medium();
       _hopTimer = Timer(Duration(milliseconds: _outMs), () {
-        if (gen != _hopGeneration) return;
-        _commitMove(key, token.id);
+        if (!mounted || _hopGeneration != gen) return;
+        setState(() => _animatingCurrentStep = 0);
+        _hopTimer = Timer(Duration(milliseconds: _settleMs), () {
+          _commitMove(key, token.id);
+        });
       });
       return;
     }
 
-    int currentStep = startStep;
-    _hopTimer?.cancel();
-    _hopTimer = Timer.periodic(Duration(milliseconds: _stepMs), (timer) {
-      if (!mounted || gen != _hopGeneration) {
-        timer.cancel();
-        return;
-      }
-      currentStep++;
-      HapticsService.light();
-      AudioService.playTokenStep();
-      if (currentStep >= finalStep) {
-        timer.cancel();
-        setState(() => _animatingCurrentStep = finalStep);
-        // Let the pawn visibly settle on its landing square before the
-        // state commit moves turn/dice forward.
-        Future.delayed(Duration(milliseconds: _settleMs), () {
-          if (gen != _hopGeneration) return;
+    AudioService.playTokenStep();
+    HapticsService.light();
+
+    int current = startStep;
+    void hopNext() {
+      if (!mounted || _hopGeneration != gen) return;
+      if (current < finalStep) {
+        current++;
+        setState(() => _animatingCurrentStep = current);
+        AudioService.playTokenStep();
+        HapticsService.selection();
+        _hopTimer = Timer(Duration(milliseconds: _stepMs), hopNext);
+      } else {
+        _hopTimer = Timer(Duration(milliseconds: _settleMs), () {
           _commitMove(key, token.id);
         });
-      } else {
-        setState(() => _animatingCurrentStep = currentStep);
       }
-    });
+    }
+
+    _hopTimer = Timer(Duration(milliseconds: _stepMs), hopNext);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double tw = constraints.maxWidth / 15.0;
-        final double th = constraints.maxHeight / 15.0;
+        final double width = constraints.maxWidth;
+        final double height = constraints.maxHeight;
+        final double tw = width / 15.0;
+        final double th = height / 15.0;
         final double tu = min(tw, th);
-        // Pawns fill almost the full cell width and may slightly
-        // overlap the edges while hopping.
-        final double tokenSize = tw * 1.12;
 
-        return Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(tu * 0.55),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.55 : 0.30),
-                blurRadius: 24,
-                spreadRadius: 2,
-                offset: const Offset(0, 10),
-              ),
-              BoxShadow(
-                color: widget.gameState.currentPlayer.color.primary
-                    .withOpacity(0.25),
-                blurRadius: 32,
-                spreadRadius: 1,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+        // Tokens almost fill the cell width (94%)
+        final double tokenSize = tw * 0.94;
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(tu * 0.40),
           child: Stack(
             children: [
               Positioned.fill(
                 child: CustomPaint(
                   painter: BoardPainter(
-                    isDark: isDark,
+                    isDark: true,
                     activeColor: widget.gameState.currentPlayer.color,
+                    themeMode: widget.themeMode,
+                    themeConfig: _cfg,
                   ),
                 ),
               ),
@@ -242,13 +233,15 @@ class _LudoBoardState extends State<LudoBoard>
                           child: Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.55),
+                              color: Colors.black.withOpacity(0.65),
                               shape: BoxShape.circle,
                             ),
                             child: Text(
                               _burstEmoji!,
                               style: TextStyle(
-                                  fontSize: tu * 2.4, height: 1.0),
+                                fontSize: tu * 2.4,
+                                height: 1.0,
+                              ),
                             ),
                           ),
                         ),
@@ -274,10 +267,11 @@ class _LudoBoardState extends State<LudoBoard>
         }
       }
       if (player == null) return;
-      final isTurn =
-          widget.gameState.currentPlayer.color == color;
+      final isTurn = widget.gameState.currentPlayer.color == color;
+      final themeColor = _cfg.colorOf(color);
       final w = tw * 3.6;
-      final h = th * 0.62;
+      final h = th * 0.58;
+
       widgets.add(
         Positioned(
           left: cx * tw - w / 2,
@@ -287,12 +281,14 @@ class _LudoBoardState extends State<LudoBoard>
           child: Center(
             child: Container(
               padding: EdgeInsets.symmetric(
-                  horizontal: tu * 0.24, vertical: tu * 0.07),
+                horizontal: tu * 0.22,
+                vertical: tu * 0.06,
+              ),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(isTurn ? 0.55 : 0.38),
+                color: Colors.black.withOpacity(isTurn ? 0.65 : 0.42),
                 borderRadius: BorderRadius.circular(tu * 0.2),
                 border: isTurn
-                    ? Border.all(color: color.lightGlow, width: 1.4)
+                    ? Border.all(color: themeColor.lightGlow, width: 1.4)
                     : null,
               ),
               child: Text(
@@ -302,7 +298,7 @@ class _LudoBoardState extends State<LudoBoard>
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: tu * 0.38,
+                  fontSize: tu * 0.36,
                   fontWeight: FontWeight.w900,
                   height: 1.0,
                   shadows: const [
@@ -323,8 +319,6 @@ class _LudoBoardState extends State<LudoBoard>
     return widgets;
   }
 
-  /// Faint gold ring on the square the last-moved token came from (§F),
-  /// so players can follow what just happened. Vanishes on the next roll.
   List<Widget> _buildLastMoveMarker(double tw, double th, double tu) {
     final gs = widget.gameState;
     final from = gs.lastMoveFrom;
@@ -344,7 +338,7 @@ class _LudoBoardState extends State<LudoBoard>
       step: from,
     );
     final c = bp.toOffsetXY(tw, th);
-    final d = tu * 0.9;
+    final d = tu * 0.92;
     return [
       Positioned(
         left: c.dx - d / 2,
@@ -356,7 +350,7 @@ class _LudoBoardState extends State<LudoBoard>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: const Color(0xFFF2C14E).withOpacity(0.85),
+                color: _cfg.boardInlayLine.withOpacity(0.85),
                 width: max(2.0, tu * 0.09),
               ),
             ),
@@ -388,7 +382,7 @@ class _LudoBoardState extends State<LudoBoard>
           tokenId: token.id,
           step: effectiveStep,
         );
-        // Finished tokens share the medallion — bucket them per color.
+
         final coordKey = effectiveStep >= 56
             ? 'home_${token.color.name}'
             : '${bp.row.toStringAsFixed(1)}_${bp.col.toStringAsFixed(1)}';
@@ -410,44 +404,42 @@ class _LudoBoardState extends State<LudoBoard>
         final bool isMovable = item['isMovable'];
         final bool isAnimating = item['isAnimating'];
 
-        // Neat mini-grid when sharing: scaled down with number and
-        // emblem still visible — 2 side by side, 3–4 in a cluster.
+        // Compact base tokens and square path tokens fill ~94% of cell
         double displaySize = tokenSize;
         Offset offset = Offset.zero;
         if (count > 1 && token.step != -1) {
           if (count == 2) {
-            displaySize = tokenSize * 0.72;
-            offset = Offset((i == 0 ? -1 : 1) * tw * 0.26, 0);
+            displaySize = tokenSize * 0.74;
+            offset = Offset((i == 0 ? -1 : 1) * tw * 0.25, 0);
           } else {
-            displaySize = tokenSize * 0.64;
+            displaySize = tokenSize * 0.65;
             const dx = [-1, 1, -1, 1];
             const dy = [-1, -1, 1, 1];
             final k = i % 4;
-            offset = Offset(dx[k] * tw * 0.26, dy[k] * th * 0.19);
+            offset = Offset(dx[k] * tw * 0.25, dy[k] * th * 0.25);
           }
         }
-        // Home medallion: 4 mini pawns in a diamond.
+        // Home medallion: 4 mini pawns in diamond
         if (token.step >= 56) {
-          displaySize = tokenSize * 0.60;
+          displaySize = tokenSize * 0.62;
           const dx = [0, -1, 1, 0];
           const dy = [-1, 0, 0, 1];
           final k = token.id % 4;
-          offset = Offset(dx[k] * tw * 0.36, dy[k] * th * 0.27);
+          offset = Offset(dx[k] * tw * 0.35, dy[k] * th * 0.35);
         }
 
         final center = boardPoint.toOffsetXY(tw, th);
-        final targetLeft =
-            center.dx - displaySize / 2 + offset.dx;
-        final targetTop =
-            center.dy - displaySize / 2 + offset.dy;
+        final targetLeft = center.dx - displaySize / 2 + offset.dx;
+        final targetTop = center.dy - displaySize / 2 + offset.dy;
 
-        // Follow-the-action ring on the settled destination pawn.
         final gs = widget.gameState;
         final isLastMoved = !isAnimating &&
             _animatingTokenKey == null &&
             gs.lastMoveColor == token.color.index &&
             gs.lastMoveToken == token.id &&
             gs.lastMoveTo == token.step;
+
+        final themeColor = _cfg.colorOf(token.color);
 
         tokenWidgets.add(
           AnimatedPositioned(
@@ -463,6 +455,8 @@ class _LudoBoardState extends State<LudoBoard>
               size: displaySize,
               isMovable: isMovable,
               isLastMoved: isLastMoved,
+              themeMode: widget.themeMode,
+              themePlayerColor: themeColor,
               onTap: () {
                 if (_animatingTokenKey != null) return;
                 final roll = widget.gameState.currentDiceRoll;

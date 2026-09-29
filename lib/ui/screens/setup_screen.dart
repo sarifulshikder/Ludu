@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+
+import '../../models/game_settings.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
 import '../../models/player.dart';
@@ -658,16 +660,79 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Padding(
-                        padding: EdgeInsets.only(top: 8, bottom: 2),
+                        padding: EdgeInsets.only(top: 8, bottom: 6),
                         child: Text(
-                          'SETTINGS',
+                          'BOARD & PIECE THEME',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1.5,
                             color: Color(0xFFE9C46A),
                           ),
                         ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: Row(
+                          children: [
+                            for (final mode in AppThemeMode.values) ...[
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 3.0),
+                                  child: InkWell(
+                                    onTap: () {
+                                      HapticsService.selection();
+                                      settingsUpdater.update(settings.copyWith(appTheme: mode));
+                                    },
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                      decoration: BoxDecoration(
+                                        color: settings.appTheme == mode
+                                            ? const Color(0xFFE9C46A)
+                                            : (widget.isDark ? const Color(0xFF1B253B) : const Color(0xFFF0EAE1)),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: settings.appTheme == mode
+                                              ? const Color(0xFFE9C46A)
+                                              : (widget.isDark ? const Color(0xFF2C3E60) : const Color(0xFFD6CEBD)),
+                                          width: settings.appTheme == mode ? 2.0 : 1.0,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Text(mode.emoji, style: const TextStyle(fontSize: 18)),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            mode.displayName,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                              color: settings.appTheme == mode
+                                                  ? const Color(0xFF141D2E)
+                                                  : (widget.isDark ? Colors.white : const Color(0xFF141D2E)),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      _SettingsSwitch(
+                        title: 'Face-to-face mode',
+                        subtitle: 'Rotate top chips & dice 180° for opponents across the phone',
+                        icon: Icons.screen_rotation_rounded,
+                        value: settings.faceToFaceMode,
+                        onChanged: (v) {
+                          HapticsService.selection();
+                          settingsUpdater.update(settings.copyWith(faceToFaceMode: v));
+                        },
                       ),
                       _SettingsSwitch(
                         title: 'Sound effects',

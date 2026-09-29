@@ -1,11 +1,11 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/env.dart';
+import '../../core/theme/ludu_theme.dart';
 import '../../models/game_settings.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
@@ -14,23 +14,20 @@ import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 import '../../state/game_controller.dart';
 import '../../state/settings_controller.dart';
-import '../board/board_painter.dart';
 import '../board/ludo_board.dart';
+import '../widgets/dice_widget.dart';
 import '../widgets/player_panel.dart';
 import 'ranking_screen.dart';
 import 'rules_screen.dart';
 import 'settings_sheet.dart';
 
-/// Tall-board game screen (§8), top to bottom:
+/// Game Screen with Square 15×15 Board, Compact Player Chips, Single Gliding Dice.
 ///
-/// slim top bar (back, sound, pause) → player panels for the top bases →
-/// tall edge-to-edge board → player panels for the bottom bases.
-///
-/// Every panel is anchored to the colour of the base it sits next to
-/// (§A1): top-left Red, top-right Green, bottom-left Blue, bottom-right
-/// Yellow — so a panel is never on the wrong side of the board.
-/// Only the active player's dice is highlighted and tappable and it pulses
-/// while it waits; there is no "tap to roll" text line (removed in §B).
+/// 1. Perfectly square 15x15 board, edge to edge, centered vertically.
+/// 2. Slim player chips (48–54 dp tall) placed close to board corners.
+/// 3. ONE large dice (96–110 dp) gliding smoothly to the active player's corner.
+/// 4. Face-to-face rotation mode for opponents across the phone.
+/// 5. Seamless theme styling (Royal Gold, Neon Glass, Wooden Luxe).
 class GameScreen extends ConsumerStatefulWidget {
   final VoidCallback onNewGame;
   final VoidCallback onToggleTheme;
@@ -51,15 +48,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   bool _isMuted = AudioService.isMuted;
   bool _boardAnimating = false;
 
-  /// Short input freeze after an automatic pass (§4: "short delay").
+  /// Short input freeze after an automatic pass.
   bool _passFreeze = false;
   Timer? _freezeTimer;
   Timer? _autoMoveTimer;
 
-  static const double _topBarHeight = 40.0;
-  static const double _gap = 5.0;
+  static const double _topBarHeight = 38.0;
+  static const double _chipGap = 4.0;
 
-  /// Panels are placed by base colour, not seat index (§A1).
+  /// Panels are placed by base colour:
+  /// Top-left Red, Top-right Green, Bottom-left Blue, Bottom-right Yellow.
   static const LudoColor topLeft = LudoColor.red;
   static const LudoColor topRight = LudoColor.green;
   static const LudoColor bottomLeft = LudoColor.blue;
@@ -68,8 +66,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   void initState() {
     super.initState();
-    // Keep the screen awake for the whole match (§F). No platform channel
-    // exists in widget tests, so skip it there.
     if (!isFlutterTest) WakelockPlus.enable().catchError((_) {});
   }
 
@@ -91,11 +87,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   void _openSettings() {
     HapticsService.light();
+    final settings = ref.read(settingsControllerProvider);
+    final cfg = LuduTheme.forMode(settings.appTheme);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor:
-          widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+      backgroundColor: cfg.surfaceCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -107,20 +104,19 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  /// Pause menu (§F): Resume, Restart, Settings, Quit.
   void _openPauseMenu() {
     HapticsService.light();
+    final settings = ref.read(settingsControllerProvider);
+    final cfg = LuduTheme.forMode(settings.appTheme);
     showModalBottomSheet(
       context: context,
-      backgroundColor:
-          widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+      backgroundColor: cfg.surfaceCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -195,13 +191,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor:
-            widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+        backgroundColor: const Color(0xFF141D2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Restart Game?',
-            style: TextStyle(fontWeight: FontWeight.w800)),
+            style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
         content: const Text(
-            'Are you sure you want to restart the current match?'),
+          'Are you sure you want to restart the current match?',
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -214,8 +211,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE63946)),
-            child:
-                const Text('Restart', style: TextStyle(color: Colors.white)),
+            child: const Text('Restart', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -236,13 +232,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor:
-            widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+        backgroundColor: const Color(0xFF141D2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Quit this game?',
-            style: TextStyle(fontWeight: FontWeight.w800)),
+            style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
         content: const Text(
-            'Your progress is saved, so you can resume from the home screen.'),
+          'Your progress is saved, so you can resume from the home screen.',
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -255,16 +252,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE63946)),
-            child:
-                const Text('Quit', style: TextStyle(color: Colors.white)),
+            child: const Text('Quit', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  /// Rolls the dice, or confirms a forced single move. Locked out while a
-  /// hop animation or an auto-pass beat is running.
   void _primaryAction(GameState gameState, GameController controller) {
     if (_boardAnimating || _passFreeze) return;
     _autoMoveTimer?.cancel();
@@ -277,18 +271,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
   }
 
-  /// Coordinates the beats after a roll resolves (§4–§5):
-  /// auto-pass freeze when nobody can move, auto-move when the setting is
-  /// on and exactly one move is legal.
   void _afterRoll(GameState state) {
     if (state.phase != GamePhase.playing) return;
     if (state.currentDiceRoll == null) {
-      // No legal moves — the engine already passed the turn; hold inputs
-      // for a short beat so the pass reads clearly.
       setState(() => _passFreeze = true);
       _freezeTimer?.cancel();
-      _freezeTimer = Timer(
-          const Duration(milliseconds: 900), () {
+      _freezeTimer = Timer(const Duration(milliseconds: 900), () {
         if (mounted) setState(() => _passFreeze = false);
       });
       return;
@@ -316,25 +304,34 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
   }
 
+  /// Calculates the 4 corner alignment targets for the single gliding dice.
+  Alignment _getDiceAlignment(LudoColor color) {
+    switch (color) {
+      case LudoColor.red:
+        return const Alignment(-0.76, -0.74);
+      case LudoColor.green:
+        return const Alignment(0.76, -0.74);
+      case LudoColor.yellow:
+        return const Alignment(0.76, 0.74);
+      case LudoColor.blue:
+        return const Alignment(-0.76, 0.74);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameControllerProvider);
     final controller = ref.read(gameControllerProvider.notifier);
     final settings = ref.watch(settingsControllerProvider);
+    final cfg = LuduTheme.forMode(settings.appTheme);
 
-    // §A2: dark status-bar icons and text so the system bar stays readable
-    // on the light board.
-    SystemChrome.setSystemUIOverlayStyle(widget.isDark
-        ? SystemUiOverlayStyle.light.copyWith(
-            statusBarColor: Colors.transparent,
-            systemNavigationBarColor: const Color(0xFF070B14),
-            systemNavigationBarIconBrightness: Brightness.light,
-          )
-        : SystemUiOverlayStyle.dark.copyWith(
-            statusBarColor: Colors.transparent,
-            systemNavigationBarColor: const Color(0xFFEDE4D2),
-            systemNavigationBarIconBrightness: Brightness.dark,
-          ));
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: cfg.backgroundGradient.last,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
 
     if (gameState.phase == GamePhase.finished) {
       return RankingScreen(
@@ -344,45 +341,71 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       );
     }
 
+    final activePlayer = gameState.currentPlayer;
+    final isActivePlayerRolling = activePlayer.finishRank == null;
+    final singleMovable = gameState.mustSelectToken &&
+        gameState.movableTokenIds.length == 1;
+    final canRoll = isActivePlayerRolling &&
+        (gameState.canRollDice || singleMovable) &&
+        !_boardAnimating &&
+        !_passFreeze;
+
+    final screenHeight = MediaQuery.of(context).size.height;
+    final double diceSize = (screenHeight * 0.12).clamp(94.0, 110.0);
+
+    // Is active dice in top half of screen (Red or Green)?
+    final isTopActive = activePlayer.color == LudoColor.red ||
+        activePlayer.color == LudoColor.green;
+    final isDiceRotated = settings.faceToFaceMode && isTopActive;
+
     return Scaffold(
-      backgroundColor: widget.isDark
-          ? const Color(0xFF070B14)
-          : const Color(0xFFF4EEE1),
+      backgroundColor: cfg.backgroundGradient[0],
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: widget.isDark
-                ? const [
-                    Color(0xFF0B1A33),
-                    Color(0xFF060C18),
-                    Color(0xFF0A1526)
-                  ]
-                : const [
-                    Color(0xFFFBF8F0),
-                    Color(0xFFF4EEE1),
-                    Color(0xFFEDE4D2)
-                  ],
+            colors: cfg.backgroundGradient,
           ),
         ),
         child: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              SizedBox(
-                  height: _topBarHeight, child: _buildTopBar(gameState)),
-              const SizedBox(height: _gap),
-              _buildPanelRow(gameState, controller, settings,
-                  const [topLeft, topRight]),
-              const SizedBox(height: _gap),
-              Expanded(
-                child: Center(
-                  child: AspectRatio(
-                    // Tall board: 15 columns × 1:1.45 cells (§D).
-                    aspectRatio: 15 / (15 * BoardPainter.cellAspect),
+              // Main Layout Column
+              Column(
+                children: [
+                  // Slim top bar (38dp)
+                  SizedBox(
+                    height: _topBarHeight,
+                    child: _buildTopBar(gameState, cfg),
+                  ),
+
+                  // Top player area (holds Red & Green chips close to board)
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: _chipGap),
+                        child: _buildPanelRow(
+                          gameState,
+                          controller,
+                          settings,
+                          cfg,
+                          const [topLeft, topRight],
+                          isTopRow: true,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Center Square Board (aspectRatio 1:1, edge to edge)
+                  AspectRatio(
+                    aspectRatio: 1.0,
                     child: LudoBoard(
                       gameState: gameState,
                       timeScale: settings.timeScale,
+                      themeMode: settings.appTheme,
+                      themeConfig: cfg,
                       onTokenSelected: (tokenId) {
                         if (_boardAnimating || _passFreeze) return;
                         _autoMoveTimer?.cancel();
@@ -395,12 +418,48 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       },
                     ),
                   ),
+
+                  // Bottom player area (holds Blue & Yellow chips close to board)
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: _chipGap),
+                        child: _buildPanelRow(
+                          gameState,
+                          controller,
+                          settings,
+                          cfg,
+                          const [bottomLeft, bottomRight],
+                          isTopRow: false,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Single Gliding Large Dice
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 450),
+                curve: Curves.easeInOutCubic,
+                alignment: _getDiceAlignment(activePlayer.color),
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: DiceWidget(
+                    value: gameState.currentDiceRoll,
+                    isRolling: false,
+                    canRoll: canRoll,
+                    activeColor: activePlayer.color,
+                    size: diceSize,
+                    timeScale: settings.timeScale,
+                    isRotated: isDiceRotated,
+                    themeMode: settings.appTheme,
+                    themeConfig: cfg,
+                    onRoll: () => _primaryAction(gameState, controller),
+                  ),
                 ),
               ),
-              const SizedBox(height: _gap),
-              _buildPanelRow(gameState, controller, settings,
-                  const [bottomLeft, bottomRight]),
-              const SizedBox(height: 2),
             ],
           ),
         ),
@@ -408,21 +467,30 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  /// Two panel slots for one board row, in left-to-right order.
+  /// Row of two player chips.
   Widget _buildPanelRow(
     GameState gameState,
     GameController controller,
     GameSettings settings,
-    List<LudoColor> slotColors,
-  ) {
+    LuduThemeConfig cfg,
+    List<LudoColor> slotColors, {
+    required bool isTopRow,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6.0),
       child: Row(
         children: [
           for (int i = 0; i < slotColors.length; i++) ...[
-            if (i > 0) const SizedBox(width: 6),
+            if (i > 0) const SizedBox(width: 8),
             Expanded(
-              child: _slot(gameState, controller, settings, slotColors[i]),
+              child: _slot(
+                gameState,
+                controller,
+                settings,
+                cfg,
+                slotColors[i],
+                isTopRow: isTopRow,
+              ),
             ),
           ],
         ],
@@ -430,33 +498,26 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  /// The panel for a base colour, or nothing when that colour isn't in play
-  /// (e.g. 2-player games leave the other two slots empty).
   Widget _slot(
     GameState gameState,
     GameController controller,
     GameSettings settings,
-    LudoColor color,
-  ) {
-    int index = gameState.players.indexWhere((p) => p.color == color);
+    LuduThemeConfig cfg,
+    LudoColor color, {
+    required bool isTopRow,
+  }) {
+    final index = gameState.players.indexWhere((p) => p.color == color);
     if (index == -1) return const SizedBox.shrink();
+
     final player = gameState.players[index];
-    final isActive = index == gameState.currentPlayerIndex &&
-        player.finishRank == null;
+    final isActive =
+        index == gameState.currentPlayerIndex && player.finishRank == null;
     final singleMovable = gameState.mustSelectToken &&
         gameState.movableTokenIds.length == 1;
     final canRoll = isActive &&
         (gameState.canRollDice || singleMovable) &&
         !_boardAnimating &&
         !_passFreeze;
-
-    // §A5: the active panel shows the live roll; everyone else shows their
-    // own last roll, or the neutral blank face before their first roll.
-    final int? diceValue = isActive
-        ? gameState.currentDiceRoll
-        : (index < gameState.lastRolls.length
-            ? gameState.lastRolls[index]
-            : null);
 
     Player? partner;
     if (gameState.teamMode) {
@@ -467,39 +528,39 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       }
     }
 
+    final isRotated = isTopRow && settings.faceToFaceMode;
+
     return PlayerPanel(
       player: player,
       playerIndex: index,
       isActive: isActive,
-      diceValue: diceValue,
+      diceValue: isActive ? gameState.currentDiceRoll : null,
       canRoll: canRoll,
       onRoll: () => _primaryAction(gameState, controller),
       isDark: widget.isDark,
       teamMode: gameState.teamMode,
       partner: partner,
       timeScale: settings.timeScale,
+      isRotated: isRotated,
+      themeConfig: cfg,
     );
   }
 
-  /// Slim top bar (§8): back, sound, pause menu.
-  Widget _buildTopBar(GameState gameState) {
-    final fg = widget.isDark ? Colors.white : const Color(0xFF0F172A);
-
+  /// Slim top bar: back, title, sound, pause menu.
+  Widget _buildTopBar(GameState gameState, LuduThemeConfig cfg) {
     Widget roundButton(IconData icon, String tooltip, VoidCallback onTap) {
       return Tooltip(
         message: tooltip,
         child: Material(
-          color: widget.isDark
-              ? Colors.white.withOpacity(0.07)
-              : Colors.white.withOpacity(0.85),
+          color: Colors.white.withOpacity(0.08),
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onTap,
             child: SizedBox(
-              width: 36,
-              height: 36,
-              child: Icon(icon, size: 19, color: fg),
+              width: 34,
+              height: 34,
+              child: Icon(icon, size: 18, color: Colors.white),
             ),
           ),
         ),
@@ -507,62 +568,37 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6.0),
+      padding: const EdgeInsets.symmetric(horizontal: 10.0),
       child: Row(
         children: [
-          roundButton(Icons.arrow_back_ios_new_rounded,
-              'Quit to home', _confirmExit),
-          const SizedBox(width: 6),
-          const Text(
+          roundButton(
+            Icons.arrow_back_rounded,
+            'Quit game',
+            _confirmExit,
+          ),
+          const SizedBox(width: 8),
+          Text(
             'LUDU',
             style: TextStyle(
-              fontSize: 17,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
-              letterSpacing: 2.0,
-              height: 1.0,
+              letterSpacing: 3.0,
+              color: cfg.boardInlayLine,
             ),
           ),
           const Spacer(),
-          // Compact turn pill: active emblem + name (never truncated away).
-          Flexible(child: _buildTurnPill(gameState, fg)),
-          const Spacer(),
           roundButton(
-            _isMuted
-                ? Icons.volume_off_rounded
-                : Icons.volume_up_rounded,
-            _isMuted ? 'Unmute Sound' : 'Mute Sound',
+            _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            _isMuted ? 'Unmute' : 'Mute',
             _toggleMute,
           ),
-          const SizedBox(width: 5),
-          roundButton(Icons.pause_rounded, 'Pause menu', _openPauseMenu),
+          const SizedBox(width: 8),
+          roundButton(
+            Icons.pause_rounded,
+            'Menu',
+            _openPauseMenu,
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTurnPill(GameState gameState, Color fg) {
-    final me = gameState.currentPlayer;
-    final label = _passFreeze
-        ? 'Passing…'
-        : '${me.color.emblemGlyph} ${me.name}';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: me.color.primary.withOpacity(
-            widget.isDark ? 0.28 : 0.14),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: me.color.primary.withOpacity(0.8), width: 1),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          color: fg,
-        ),
       ),
     );
   }
@@ -571,8 +607,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 class _PauseAction extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool danger;
   final VoidCallback onTap;
+  final bool danger;
 
   const _PauseAction({
     required this.icon,
@@ -583,17 +619,25 @@ class _PauseAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon,
-          color: danger ? const Color(0xFFE63946) : null),
-      title: Text(
-        label,
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          color: danger ? const Color(0xFFE63946) : null,
+    final color = danger ? const Color(0xFFE63946) : Colors.white;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        tileColor: Colors.white.withOpacity(danger ? 0.05 : 0.03),
+        leading: Icon(icon, color: color),
+        title: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
         ),
+        onTap: () {
+          HapticsService.light();
+          onTap();
+        },
       ),
-      onTap: onTap,
     );
   }
 }

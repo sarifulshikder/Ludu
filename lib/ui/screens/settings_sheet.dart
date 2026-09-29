@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/ludu_theme.dart';
 import '../../models/game_settings.dart';
 import '../../services/haptics_service.dart';
 import '../../state/settings_controller.dart';
 import 'rules_screen.dart';
 
-/// In-game settings (§9, §C, §F): sound + volume, vibration, auto-move,
-/// block rule, end-at-first-winner, animation speed, theme, rules and match
-/// restart.
+/// In-game settings: theme selector, face-to-face mode, sound + volume,
+/// vibration, animation speed, auto-move, block rule, rules & match restart.
 class SettingsSheet extends ConsumerWidget {
   final bool isDark;
   final VoidCallback onToggleTheme;
@@ -25,6 +25,7 @@ class SettingsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsControllerProvider);
     final updater = ref.read(settingsControllerProvider.notifier);
+    final cfg = LuduTheme.forMode(settings.appTheme);
 
     void update(GameSettings next) {
       HapticsService.selection();
@@ -48,16 +49,70 @@ class SettingsSheet extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'SETTINGS',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.0,
+                    color: Color(0xFFE9C46A),
+                  ),
+                ),
+                Text(
+                  settings.appTheme.displayName.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: cfg.boardInlayLine,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // --- Theme Selection Section ---
             const Text(
-              'SETTINGS',
+              'BOARD & PIECE THEME',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 11,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 2.0,
-                color: Color(0xFFE9C46A),
+                letterSpacing: 1.2,
+                color: Colors.white70,
               ),
             ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (final mode in AppThemeMode.values) ...[
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3.0),
+                      child: _ThemeCard(
+                        mode: mode,
+                        isSelected: settings.appTheme == mode,
+                        onTap: () => update(settings.copyWith(appTheme: mode)),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // --- Face-to-Face Mode ---
+            _tile(
+              title: 'Face-to-face mode',
+              subtitle: 'Rotate top chips & dice 180° for opponents across the phone',
+              icon: Icons.screen_rotation_rounded,
+              value: settings.faceToFaceMode,
+              onChanged: (v) => update(settings.copyWith(faceToFaceMode: v)),
+            ),
+
+            // --- Sound & Volume ---
             _tile(
               title: 'Sound effects',
               subtitle: 'Dice, hops, captures, center, bonuses',
@@ -67,7 +122,6 @@ class SettingsSheet extends ConsumerWidget {
               value: settings.sound,
               onChanged: (v) => update(settings.copyWith(sound: v)),
             ),
-            // Separate volume slider (§C).
             Opacity(
               opacity: settings.sound ? 1.0 : 0.45,
               child: Padding(
@@ -103,6 +157,8 @@ class SettingsSheet extends ConsumerWidget {
                 ),
               ),
             ),
+
+            // --- Vibration ---
             _tile(
               title: 'Vibration',
               subtitle: 'Light on moves, strong on captures',
@@ -112,6 +168,8 @@ class SettingsSheet extends ConsumerWidget {
               value: settings.vibration,
               onChanged: (v) => update(settings.copyWith(vibration: v)),
             ),
+
+            // --- Animation Speed ---
             _tile(
               title: 'Animation speed',
               subtitle: settings.fastAnimation
@@ -123,6 +181,8 @@ class SettingsSheet extends ConsumerWidget {
               value: settings.fastAnimation,
               onChanged: (v) => update(settings.copyWith(fastAnimation: v)),
             ),
+
+            // --- Auto-move single option ---
             _tile(
               title: 'Auto-move single option',
               subtitle: 'When only one move is legal, play it automatically',
@@ -130,6 +190,8 @@ class SettingsSheet extends ConsumerWidget {
               value: settings.autoMove,
               onChanged: (v) => update(settings.copyWith(autoMove: v)),
             ),
+
+            // --- Block Rule ---
             _tile(
               title: 'Block rule',
               subtitle: 'Stacks of 2+ on a plain square cannot be landed on',
@@ -137,6 +199,8 @@ class SettingsSheet extends ConsumerWidget {
               value: settings.blockRule,
               onChanged: (v) => update(settings.copyWith(blockRule: v)),
             ),
+
+            // --- End at first winner ---
             _tile(
               title: 'End game at first winner',
               subtitle: 'Stop the match as soon as someone finishes',
@@ -144,16 +208,8 @@ class SettingsSheet extends ConsumerWidget {
               value: settings.endAtFirstWinner,
               onChanged: (v) => update(settings.copyWith(endAtFirstWinner: v)),
             ),
-            _tile(
-              title: 'Dark theme',
-              subtitle: 'Midnight arena instead of daylight',
-              icon: isDark
-                  ? Icons.dark_mode_rounded
-                  : Icons.light_mode_rounded,
-              value: isDark,
-              onChanged: (_) => onToggleTheme(),
-            ),
-            const SizedBox(height: 4),
+
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -223,6 +279,67 @@ class SettingsSheet extends ConsumerWidget {
       secondary: Icon(icon),
       value: value,
       onChanged: onChanged,
+    );
+  }
+}
+
+class _ThemeCard extends StatelessWidget {
+  final AppThemeMode mode;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ThemeCard({
+    required this.mode,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = LuduTheme.forMode(mode);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        decoration: BoxDecoration(
+          color: cfg.surfaceCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? cfg.boardInlayLine : cfg.surfaceCardBorder,
+            width: isSelected ? 2.2 : 1.0,
+          ),
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: cfg.boardInlayLine.withOpacity(0.35),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              mode.emoji,
+              style: const TextStyle(fontSize: 22),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              mode.displayName,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                color: isSelected ? Colors.white : Colors.white70,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
