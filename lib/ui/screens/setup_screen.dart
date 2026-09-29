@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
+import '../../models/player.dart';
 import '../../services/haptics_service.dart';
 import '../../state/game_controller.dart';
 import '../../state/settings_controller.dart';
+import 'rules_screen.dart';
 
 /// Home screen (§10): Start Game, player count (2/3/4), player names and
 /// colors, resume-a-saved-game, rules and full settings.
@@ -14,6 +16,7 @@ class SetupScreen extends ConsumerStatefulWidget {
     required int playerCount,
     required List<String> playerNames,
     required List<LudoColor> playerColors,
+    required bool teamMode,
   }) onStartGame;
   final VoidCallback onResumeGame;
   final VoidCallback onToggleTheme;
@@ -33,9 +36,14 @@ class SetupScreen extends ConsumerStatefulWidget {
 
 class _SetupScreenState extends ConsumerState<SetupScreen> {
   int _playerCount = 4;
+
+  /// Team 2v2 (§E): teammates opposite, Team A = Red + Yellow.
+  bool _teamMode = false;
   late List<TextEditingController> _nameControllers;
 
-  /// Clockwise seat order (§1): Red, Green, Yellow, Blue.
+  /// Clockwise seat order: Red, Green, Yellow, Blue.
+  /// P1 Red top-left, P2 Green top-right, P3 Yellow bottom-right,
+  /// P4 Blue bottom-left.
   final List<LudoColor> _selectedColors = [
     LudoColor.red,
     LudoColor.green,
@@ -89,6 +97,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     HapticsService.selection();
     setState(() {
       _playerCount = count;
+      // Team 2v2 always needs exactly four players (§E).
+      if (_teamMode) _playerCount = 4;
       // Ensure active colors stay unique.
       final seen = <LudoColor>{};
       for (int i = 0; i < _playerCount; i++) {
@@ -111,79 +121,183 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     });
   }
 
-  void _showRulesDialog() {
-    HapticsService.light();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor:
-              widget.isDark ? const Color(0xFF141D2E) : Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Text('🎲 ', style: TextStyle(fontSize: 22)),
-              Text('Ludu Rules',
-                  style: TextStyle(fontWeight: FontWeight.w900)),
-            ],
-          ),
-          content: const SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _RuleItem(
-                  title: 'Pure Luck Guarantee',
-                  desc: 'Every roll uses cryptographically secure Random.secure(). Zero weighting, zero hidden help.',
-                ),
-                _RuleItem(
-                  title: 'First Player',
-                  desc: 'The starting player is chosen randomly. Turns run clockwise: Red, Green, Yellow, Blue.',
-                ),
-                _RuleItem(
-                  title: 'Exit Base',
-                  desc: 'Roll a 6 to bring a token onto your start square.',
-                ),
-                _RuleItem(
-                  title: 'Extra Turn',
-                  desc: 'Roll again after a 6 you actually move with, after a capture, or after reaching the center. Bonuses chain.',
-                ),
-                _RuleItem(
-                  title: 'Captures & Safe Squares',
-                  desc: 'Landing exactly on an opponent sends them home. Passing over is safe. Start squares and stars are safe and can be shared.',
-                ),
-                _RuleItem(
-                  title: 'Three 6s Rule',
-                  desc: 'A third consecutive 6 is voided — no move — and the turn passes. Earlier moves stay.',
-                ),
-                _RuleItem(
-                  title: 'Exact Roll to Finish',
-                  desc: 'The center needs the exact number. Smaller rolls still move closer inside the home column.',
-                ),
-                _RuleItem(
-                  title: 'Winning',
-                  desc: 'All 4 home takes the next rank. The game continues for 2nd and 3rd place.',
-                ),
-              ],
+  void _setMode(bool team) {
+    HapticsService.selection();
+    setState(() {
+      _teamMode = team;
+      // Team mode is 4 players only; Classic keeps the chosen count.
+      if (team) _playerCount = 4;
+      if (team) {
+        _selectedColors[0] = LudoColor.red;
+        _selectedColors[1] = LudoColor.green;
+        _selectedColors[2] = LudoColor.yellow;
+        _selectedColors[3] = LudoColor.blue;
+      }
+    });
+  }
+
+  /// Classic / Team mode cards (§E).
+  Widget _modeCard(String title, String subtitle, IconData icon, bool team) {
+    final selected = _teamMode == team;
+    final bg = selected
+        ? const Color(0xFFE9C46A)
+        : (widget.isDark ? const Color(0xFF141D2E) : Colors.white);
+    final fg = selected
+        ? const Color(0xFF1A202C)
+        : (widget.isDark ? Colors.white : const Color(0xFF1A202C));
+    final sub = selected
+        ? const Color(0xFF3D3520)
+        : (widget.isDark ? Colors.white70 : const Color(0xFF64748B));
+    return Expanded(
+      child: InkWell(
+        onTap: () => _setMode(team),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFFE9C46A)
+                  : (widget.isDark
+                      ? const Color(0xFF283650)
+                      : const Color(0xFFD6CEBD)),
+              width: selected ? 2.0 : 1.0,
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
-                'Got It',
+          child: Column(
+            children: [
+              Icon(icon, size: 22, color: fg),
+              const SizedBox(height: 4),
+              Text(
+                title,
                 style: TextStyle(
-                  color: Color(0xFFE9C46A),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: sub),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Team A / Team B preview: who plays with whom (§E).
+  Widget _teamPreview(List<LudoColor> activeColors) {
+    Widget row(String label, LudoColor a, LudoColor b) {
+      final accent = Player.teamAccent(label == 'Team A' ? 0 : 1);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 58,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: accent.withOpacity(widget.isDark ? 0.25 : 0.20),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: accent, width: 1),
+              ),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: widget.isDark ? accent : const Color(0xFF1A202C),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _miniOrb(a),
+            _miniOrb(b),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'sit opposite • share squares • never capture each other',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: widget.isDark
+                      ? Colors.white60
+                      : const Color(0xFF64748B),
                 ),
               ),
             ),
           ],
-        );
-      },
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isDark
+              ? const Color(0xFF283650)
+              : const Color(0xFFD6CEBD),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          row('Team A', activeColors[0], activeColors[2]),
+          row('Team B', activeColors[1], activeColors[3]),
+          Text(
+            'A team wins when all 8 tokens are home. Once you finish your own 4, '
+            'your rolls move your teammate\u2019s tokens.',
+            style: TextStyle(
+              fontSize: 11,
+              color:
+                  widget.isDark ? Colors.white60 : const Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _miniOrb(LudoColor c) {
+    return Container(
+      width: 26,
+      height: 26,
+      margin: const EdgeInsets.only(right: 6),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: c.jewelGradient,
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: Center(
+        child: Text(
+          c.emblemGlyph,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Full rules screen (§F), including the Team 2v2 rules.
+  void _openRules() {
+    HapticsService.light();
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => RulesScreen(isDark: widget.isDark),
+    ));
   }
 
   @override
@@ -198,9 +312,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         title: const Text('LUDU'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline_rounded),
+            icon: const Icon(Icons.menu_book_rounded),
             tooltip: 'Rules',
-            onPressed: _showRulesDialog,
+            onPressed: _openRules,
           ),
           IconButton(
             icon: Icon(widget.isDark
@@ -279,6 +393,38 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 onResume: widget.onResumeGame,
               ),
               const Text(
+                'GAME MODE',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                  color: Color(0xFFE9C46A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _modeCard(
+                    'Classic',
+                    '2–4 players, everyone for themselves',
+                    Icons.person_rounded,
+                    false,
+                  ),
+                  const SizedBox(width: 10),
+                  _modeCard(
+                    'Team 2 vs 2',
+                    'Red+Yellow vs Green+Blue, 8 home wins',
+                    Icons.groups_rounded,
+                    true,
+                  ),
+                ],
+              ),
+              if (_teamMode) ...[
+                const SizedBox(height: 12),
+                _teamPreview(activeColors),
+              ],
+              const SizedBox(height: 20),
+              const Text(
                 'NUMBER OF PLAYERS',
                 style: TextStyle(
                   fontSize: 13,
@@ -288,6 +434,20 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              if (_teamMode)
+                Center(
+                  child: Text(
+                    'Team 2 vs 2 always uses 4 players',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: widget.isDark
+                          ? Colors.white60
+                          : const Color(0xFF64748B),
+                    ),
+                  ),
+                )
+              else
               Row(
                 children: [2, 3, 4].map((count) {
                   final isSelected = _playerCount == count;
@@ -536,6 +696,61 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                           HapticsService.selection();
                         },
                       ),
+                      // Volume slider (§C).
+                      Opacity(
+                        opacity: settings.sound ? 1.0 : 0.45,
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                              left: 14, right: 14, bottom: 4),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 28,
+                                child:
+                                    Icon(Icons.volume_down_rounded, size: 20),
+                              ),
+                              Expanded(
+                                child: Slider(
+                                  value: settings.volume,
+                                  min: 0,
+                                  max: 1,
+                                  divisions: 10,
+                                  label: '${(settings.volume * 100).round()}%',
+                                  onChanged: settings.sound
+                                      ? (v) => settingsUpdater.update(
+                                          settings.copyWith(volume: v))
+                                      : null,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 42,
+                                child: Text(
+                                  '${(settings.volume * 100).round()}%',
+                                  textAlign: TextAlign.end,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      _SettingsSwitch(
+                        title: 'Animation speed',
+                        subtitle: settings.fastAnimation
+                            ? 'Fast — snappier hops and dice'
+                            : 'Normal — full-length hops and dice',
+                        icon: settings.fastAnimation
+                            ? Icons.fast_forward_rounded
+                            : Icons.play_circle_outline_rounded,
+                        value: settings.fastAnimation,
+                        onChanged: (v) {
+                          HapticsService.selection();
+                          settingsUpdater.update(
+                              settings.copyWith(fastAnimation: v));
+                        },
+                      ),
                       _SettingsSwitch(
                         title: 'Auto-move single option',
                         subtitle:
@@ -576,20 +791,41 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _openRules,
+                  icon: const Icon(Icons.menu_book_rounded, size: 20),
+                  label: const Text(
+                    'Rules',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    side: const BorderSide(
+                        color: Color(0xFFE9C46A), width: 1.5),
+                    foregroundColor: const Color(0xFFE9C46A),
+                  ),
+                ),
+              ),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () {
                   HapticsService.medium();
                   final names = List.generate(
-                    _playerCount,
+                    _teamMode ? 4 : _playerCount,
                     (i) => _nameControllers[i].text.trim().isEmpty
                         ? 'Player ${i + 1}'
                         : _nameControllers[i].text.trim(),
                   );
                   widget.onStartGame(
-                    playerCount: _playerCount,
+                    playerCount: _teamMode ? 4 : _playerCount,
                     playerNames: names,
                     playerColors: activeColors,
+                    teamMode: _teamMode,
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -733,38 +969,6 @@ class _SettingsSwitch extends StatelessWidget {
       secondary: Icon(icon),
       value: value,
       onChanged: onChanged,
-    );
-  }
-}
-
-class _RuleItem extends StatelessWidget {
-  final String title;
-  final String desc;
-
-  const _RuleItem({required this.title, required this.desc});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-              color: Color(0xFFE9C46A),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            desc,
-            style: const TextStyle(fontSize: 13, height: 1.3),
-          ),
-        ],
-      ),
     );
   }
 }

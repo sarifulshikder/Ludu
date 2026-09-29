@@ -294,15 +294,49 @@ def make_victory():
     return finish(reverb(x, mix=0.30, decay=0.45), 0.86, fade_out=0.10)
 
 
+def make_dice_result():
+    """The landing confirmation: one warm, friendly pop."""
+    x = silence(0.18)
+    pop = partials(
+        880.0,
+        [1.0, 2.0, 3.02],
+        [0.55, 0.22, 0.09],
+        0.16,
+        tau=0.045,
+        attack=0.002,
+    )
+    x = mix_into(x, pop, 0.0)
+    x = mix_into(x, band_noise(0.04, 3200, 2.5, 0.010, gain=0.12), 0.0)
+    return finish(x, 0.70, fade_out=0.02)
+
+
+def make_no_move():
+    """No legal move: a soft, low double-bonk — informative, never harsh."""
+    x = silence(0.34)
+    for f, at in ((220.0, 0.00), (174.61, 0.13)):
+        b = partials(
+            f,
+            [1.0, 2.0, 2.99],
+            [0.50, 0.20, 0.08],
+            0.20,
+            tau=0.07,
+            attack=0.003,
+        )
+        x = mix_into(x, b, at)
+    return finish(x, 0.62, fade_out=0.04)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     print("Rendering sound set:")
     write("dice_roll.wav", make_dice_roll())
+    write("dice_result.wav", make_dice_result())
     write("token_step.wav", make_token_step())
     write("token_out.wav", make_token_out())
     write("capture.wav", make_capture())
     write("six.wav", make_six())
     write("safe.wav", make_safe())
+    write("no_move.wav", make_no_move())
     write("victory.wav", make_victory())
 
 

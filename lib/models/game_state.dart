@@ -19,7 +19,21 @@ class GameState {
   final int totalSixes;
   final int totalCaptures;
 
-  const GameState({
+  /// When true, 4-player 2v2 team rules apply (§E).
+  final bool teamMode;
+
+  /// Last rolled value per player (index-aligned). Null until that player
+  /// has rolled for the first time — panels show a neutral face meanwhile.
+  final List<int?> lastRolls;
+
+  /// Last committed move, for the follow-the-action highlight (§F).
+  /// Null color/token means no highlight.
+  final int? lastMoveColor;
+  final int? lastMoveToken;
+  final int? lastMoveFrom;
+  final int? lastMoveTo;
+
+  GameState({
     required this.players,
     this.currentPlayerIndex = 0,
     this.currentDiceRoll,
@@ -31,7 +45,13 @@ class GameState {
     this.totalTurns = 0,
     this.totalSixes = 0,
     this.totalCaptures = 0,
-  });
+    this.teamMode = false,
+    List<int?>? lastRolls,
+    this.lastMoveColor,
+    this.lastMoveToken,
+    this.lastMoveFrom,
+    this.lastMoveTo,
+  }) : lastRolls = lastRolls ?? List<int?>.filled(players.length, null);
 
   Player get currentPlayer => players[currentPlayerIndex];
 
@@ -58,6 +78,13 @@ class GameState {
     int? totalTurns,
     int? totalSixes,
     int? totalCaptures,
+    bool? teamMode,
+    List<int?>? lastRolls,
+    int? lastMoveColor,
+    int? lastMoveToken,
+    int? lastMoveFrom,
+    int? lastMoveTo,
+    bool clearLastMove = false,
   }) {
     return GameState(
       players: players ?? this.players,
@@ -72,11 +99,20 @@ class GameState {
       totalTurns: totalTurns ?? this.totalTurns,
       totalSixes: totalSixes ?? this.totalSixes,
       totalCaptures: totalCaptures ?? this.totalCaptures,
+      teamMode: teamMode ?? this.teamMode,
+      lastRolls: lastRolls ?? this.lastRolls,
+      lastMoveColor:
+          clearLastMove ? null : (lastMoveColor ?? this.lastMoveColor),
+      lastMoveToken:
+          clearLastMove ? null : (lastMoveToken ?? this.lastMoveToken),
+      lastMoveFrom:
+          clearLastMove ? null : (lastMoveFrom ?? this.lastMoveFrom),
+      lastMoveTo: clearLastMove ? null : (lastMoveTo ?? this.lastMoveTo),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'v': 1,
+        'v': 2,
         'players': players.map((p) => p.toJson()).toList(),
         'currentPlayerIndex': currentPlayerIndex,
         'currentDiceRoll': currentDiceRoll,
@@ -87,6 +123,12 @@ class GameState {
         'totalTurns': totalTurns,
         'totalSixes': totalSixes,
         'totalCaptures': totalCaptures,
+        'teamMode': teamMode,
+        'lastRolls': lastRolls,
+        'lastMoveColor': lastMoveColor,
+        'lastMoveToken': lastMoveToken,
+        'lastMoveFrom': lastMoveFrom,
+        'lastMoveTo': lastMoveTo,
       };
 
   factory GameState.fromJson(Map<String, dynamic> json) {
@@ -99,6 +141,7 @@ class GameState {
         .toList();
     final phaseIndex = json['phase'] as int?;
     final movable = json['movableTokenIds'] as List?;
+    final rawRolls = json['lastRolls'] as List?;
     // Rebuild finish order from ranks (1st, 2nd, ...).
     final ranked = players.where((p) => p.finishRank != null).toList()
       ..sort((a, b) => a.finishRank!.compareTo(b.finishRank!));
@@ -121,6 +164,19 @@ class GameState {
       totalTurns: (json['totalTurns'] as int?) ?? 0,
       totalSixes: (json['totalSixes'] as int?) ?? 0,
       totalCaptures: (json['totalCaptures'] as int?) ?? 0,
+      teamMode: json['teamMode'] as bool? ?? false,
+      lastRolls: rawRolls == null
+          ? null
+          : List<int?>.generate(
+              players.length,
+              (i) => i < rawRolls.length
+                  ? (rawRolls[i] as int?)
+                  : null,
+            ),
+      lastMoveColor: json['lastMoveColor'] as int?,
+      lastMoveToken: json['lastMoveToken'] as int?,
+      lastMoveFrom: json['lastMoveFrom'] as int?,
+      lastMoveTo: json['lastMoveTo'] as int?,
     );
   }
 }

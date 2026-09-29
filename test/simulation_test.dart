@@ -20,7 +20,9 @@ void main() {
       int totalActions = 0;
 
       for (int g = 0; g < games; g++) {
-        final count = 2 + rng.nextInt(3);
+        // Every 7th game is a 4-player Team 2v2 match.
+        final teamGame = g % 7 == 0;
+        final count = teamGame ? 4 : 2 + rng.nextInt(3);
         final settings = GameSettings(
           // Exercise both rule variants across the run.
           blockRule: g.isEven,
@@ -34,6 +36,7 @@ void main() {
         controller.startNewGame(
           playerCount: count,
           firstPlayerIndex: rng.nextInt(count),
+          teamMode: teamGame,
         );
 
         int actions = 0;
@@ -111,6 +114,16 @@ void _assertLegalMidGame(GameState s, String where) {
 /// End-of-game invariants.
 void _assertLegalFinal(GameState s, GameSettings settings, String where) {
   expect(s.phase, equals(GamePhase.finished), reason: where);
+  if (s.teamMode) {
+    // One team owns all 8 home tokens; both mates share rank 1.
+    expect(s.finishOrder.length, equals(2), reason: where);
+    final teams = s.finishOrder.map((p) => p.teamId).toSet();
+    expect(teams.length, equals(1), reason: where);
+    for (final p in s.finishOrder) {
+      expect(p.hasFinished, isTrue, reason: '$where ${p.name}');
+    }
+    return;
+  }
   if (settings.endAtFirstWinner) {
     expect(s.finishOrder.length, equals(1), reason: where);
     expect(s.finishOrder.first.hasFinished, isTrue, reason: where);

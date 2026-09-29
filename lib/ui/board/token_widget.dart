@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/env.dart';
 import '../../models/ludo_color.dart';
 import '../../models/token.dart';
 import '../../services/haptics_service.dart';
@@ -17,6 +18,9 @@ class TokenWidget extends StatefulWidget {
   final Token token;
   final double size;
   final bool isMovable;
+
+  /// Gold follow ring for the last committed move (§F).
+  final bool isLastMoved;
   final VoidCallback? onTap;
 
   const TokenWidget({
@@ -24,6 +28,7 @@ class TokenWidget extends StatefulWidget {
     required this.token,
     required this.size,
     this.isMovable = false,
+    this.isLastMoved = false,
     this.onTap,
   });
 
@@ -39,15 +44,7 @@ class _TokenWidgetState extends State<TokenWidget>
   void _startPulse() {
     // In widget tests an endlessly repeating animation would make
     // pumpAndSettle() hang, so settle the controller once instead.
-    bool inTest = false;
-    assert(() {
-      if (WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
-        inTest = true;
-      }
-      return true;
-    }());
-
-    if (inTest) {
+    if (isFlutterTest) {
       _pulseController.forward();
     } else {
       _pulseController.repeat(reverse: true);
@@ -107,10 +104,10 @@ class _TokenWidgetState extends State<TokenWidget>
             final bounce = widget.isMovable ? _pulseScale.value : 1.0;
             return Transform.scale(
               scale: bounce,
-              // Slight vertical hop while selectable so it reads from afar.
+              // Pop-up lift while selectable so it reads from afar.
               child: Transform.translate(
                 offset: widget.isMovable
-                    ? Offset(0, -2.0 * (_pulseScale.value - 1.0) * 10)
+                    ? Offset(0, -w * 0.9 * (_pulseScale.value - 1.0))
                     : Offset.zero,
                 child: SizedBox(
                   width: w,
@@ -122,6 +119,7 @@ class _TokenWidgetState extends State<TokenWidget>
                       isHome: widget.token.isHome,
                       number: widget.token.id + 1,
                       selectable: widget.isMovable,
+                      isLastMoved: widget.isLastMoved,
                       shadow: isDark ? 0.42 : 0.30,
                     ),
                   ),
@@ -150,6 +148,7 @@ class _PawnPainter extends CustomPainter {
   final bool isHome;
   final int number;
   final bool selectable;
+  final bool isLastMoved;
   final double shadow;
 
   _PawnPainter({
@@ -157,6 +156,7 @@ class _PawnPainter extends CustomPainter {
     required this.isHome,
     required this.number,
     required this.selectable,
+    this.isLastMoved = false,
     required this.shadow,
   });
 
@@ -176,6 +176,20 @@ class _PawnPainter extends CustomPainter {
         ..color = Colors.black.withOpacity(shadow)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.06),
     );
+
+    // Last-move follow ring (§F): a crisp gold oval at the pawn's feet.
+    if (isLastMoved && !selectable) {
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(cx, w * 0.50),
+            width: w * 1.04,
+            height: w * 1.08),
+        Paint()
+          ..color = const Color(0xFFF2C14E).withOpacity(0.95)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(2.2, w * 0.06),
+      );
+    }
 
     // Selectable golden halo.
     if (selectable) {
@@ -396,7 +410,8 @@ class _PawnPainter extends CustomPainter {
       old.color != color ||
       old.isHome != isHome ||
       old.number != number ||
-      old.selectable != selectable;
+      old.selectable != selectable ||
+      old.isLastMoved != isLastMoved;
 }
 
 /// Compact pawn avatar for player cards.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
+import '../../models/player.dart';
 import '../../services/haptics_service.dart';
 import '../board/token_widget.dart';
 import '../widgets/confetti_overlay.dart';
@@ -34,6 +35,7 @@ class _RankingScreenState extends State<RankingScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final teamMode = widget.gameState.teamMode;
     // Ranked players first (1st, 2nd, ...), then the rest by progress.
     final ordered = List.of(widget.gameState.players)
       ..sort((a, b) {
@@ -42,9 +44,17 @@ class _RankingScreenState extends State<RankingScreen> {
         if (ra != rb) return ra.compareTo(rb);
         return b.tokensHomeCount.compareTo(a.tokensHomeCount);
       });
+    // Team games show the winning team first; Classic shows the winner.
     final winner = widget.gameState.finishOrder.isNotEmpty
         ? widget.gameState.finishOrder.first
         : ordered.first;
+    final accent =
+        teamMode ? Player.teamAccent(winner.teamId) : winner.color.primary;
+    final headline =
+        teamMode ? '${Player.teamName(winner.teamId)} wins!' : '${winner.name} wins!';
+    final subline = teamMode
+        ? '${widget.gameState.finishOrder.map((p) => p.name).join('  +  ')} • 8/8 home'
+        : '${winner.color.displayName} ${winner.color.emblemGlyph} • 4/4 home';
 
     return ConfettiOverlay(
       isPlaying: true,
@@ -56,9 +66,9 @@ class _RankingScreenState extends State<RankingScreen> {
             child: Column(
               children: [
                 const SizedBox(height: 12),
-                const Text(
-                  '🏆 RESULTS 🏆',
-                  style: TextStyle(
+                Text(
+                  teamMode ? '🏆 TEAM RESULT 🏆' : '🏆 RESULTS 🏆',
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 4.0,
@@ -66,25 +76,49 @@ class _RankingScreenState extends State<RankingScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                PinAvatar(
-                    color: winner.color, size: 92, isDark: isDark),
+                // Winner hero: both teammates linked by the team accent (§E).
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: widget.gameState.finishOrder
+                      .take(teamMode ? 2 : 1)
+                      .map((p) => Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: teamMode
+                                      ? Player.teamAccent(p.teamId)
+                                      : Colors.transparent,
+                                  width: 3,
+                                ),
+                              ),
+                              child: PinAvatar(
+                                  color: p.color,
+                                  size: teamMode ? 64 : 92,
+                                  isDark: isDark),
+                            ),
+                          ))
+                      .toList(),
+                ),
                 const SizedBox(height: 10),
                 Text(
-                  '${winner.name} wins!',
+                  headline,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 30,
+                  style: TextStyle(
+                    fontSize: teamMode ? 26 : 30,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.5,
                   ),
                 ),
                 Text(
-                  '${winner.color.displayName} ${winner.color.emblemGlyph} • 4/4 home',
+                  subline,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: winner.color.primary,
+                    color: accent,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -98,6 +132,9 @@ class _RankingScreenState extends State<RankingScreen> {
                       final rank = player.finishRank ?? (index + 1);
                       final color = player.color;
                       final isWinner = rank == 1;
+                      final rowAccent = teamMode
+                          ? Player.teamAccent(player.teamId)
+                          : color.primary;
                       return Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -130,7 +167,8 @@ class _RankingScreenState extends State<RankingScreen> {
                         ),
                         child: Row(
                           children: [
-                            _RankBadge(rank: rank),
+                            _RankBadge(rank: rank, teamMode: teamMode,
+                                accent: rowAccent),
                             const SizedBox(width: 14),
                             Expanded(
                               child: Column(
@@ -269,14 +307,23 @@ class _RankingScreenState extends State<RankingScreen> {
 
 class _RankBadge extends StatelessWidget {
   final int rank;
+  final bool teamMode;
+  final Color accent;
 
-  const _RankBadge({required this.rank});
+  const _RankBadge({
+    required this.rank,
+    this.teamMode = false,
+    this.accent = const Color(0xFFFFD700),
+  });
 
   @override
   Widget build(BuildContext context) {
     Color medalColor;
     String label;
-    if (rank == 1) {
+    if (teamMode) {
+      medalColor = accent;
+      label = 'T';
+    } else if (rank == 1) {
       medalColor = const Color(0xFFFFD700);
       label = '1st';
     } else if (rank == 2) {

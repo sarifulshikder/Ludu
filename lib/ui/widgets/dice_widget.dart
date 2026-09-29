@@ -1,15 +1,19 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../core/env.dart';
 import '../../models/ludo_color.dart';
+import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 
 /// Aurora grand dice — big ivory cube with player-tinted glow.
 ///
-/// Roll animation reads like a real tabletop toss instead of a fake 3D
-/// flip: the faces shuffle rapidly while the die jumps twice with a
-/// wobble, then lands with an elastic pop. No endlessly-repeating
-/// controllers, so widget tests can always settle.
+/// * Null [value] draws a neutral blank face: shown until a player rolls.
+/// * The active player's dice gently pulses/bounces while tappable.
+/// * Roll animation reads like a real tabletop toss: faces shuffle while
+///   the die jumps twice with a wobble, then lands with an elastic pop
+///   plus a result sound. Repeating pulse controllers never run in widget
+///   tests, so they can always settle.
 class DiceWidget extends StatefulWidget {
   final int? value;
   final bool isRolling;
@@ -17,6 +21,9 @@ class DiceWidget extends StatefulWidget {
   final LudoColor activeColor;
   final VoidCallback onRoll;
   final double size;
+
+  /// Animation duration multiplier (1.0 normal, ~0.55 fast).
+  final double timeScale;
 
   const DiceWidget({
     super.key,
@@ -26,6 +33,7 @@ class DiceWidget extends StatefulWidget {
     required this.activeColor,
     required this.onRoll,
     this.size = 96,
+    this.timeScale = 1.0,
   });
 
   @override
@@ -33,23 +41,32 @@ class DiceWidget extends StatefulWidget {
 }
 
 class _DiceWidgetState extends State<DiceWidget>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _tossController;
   late Animation<double> _jump;
   late Animation<double> _wobble;
   late Animation<double> _punch;
 
-  int _displayValue = 1;
+  /// Gentle attract pulse while the dice awaits a tap.
+  late AnimationController _idleController;
+  late Animation<double> _idlePulse;
+
+  int? _displayValue = 1;
   Timer? _shuffleTimer;
   final Random _random = Random();
+
+  static bool get _inTest => isFlutterTest;
+
+  Duration get _tossDuration => Duration(
+      milliseconds: (720 * widget.timeScale).round().clamp(200, 1200));
 
   @override
   void initState() {
     super.initState();
-    _displayValue = widget.value ?? 1;
+    _displayValue = widget.value;
     _tossController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 720),
+      duration: _tossDuration,
     );
     // Two jumps: up-down-up-down over the toss.
     _jump = TweenSequence<double>([
@@ -91,24 +108,51 @@ class _DiceWidgetState extends State<DiceWidget>
           weight: 45),
     ]).animate(_tossController);
 
+    _idleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+    _idlePulse = Tween<double>(begin: 1.0, end: 1.06).animate(
+      CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
+    );
+    _syncIdlePulse();
+
     _tossController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _shuffleTimer?.cancel();
-        setState(() => _displayValue = widget.value ?? 1);
+        setState(() => _displayValue = widget.value);
         HapticsService.light();
+        AudioService.playDiceResult();
+        _syncIdlePulse();
       }
     });
+  }
+
+  /// The attract pulse runs only while a tap is awaited (never mid-toss,
+  /// never in widget tests so they can settle).
+  void _syncIdlePulse() {
+    final want = widget.canRoll &&
+        !_tossController.isAnimating &&
+        !_inTest;
+    if (want && !_idleController.isAnimating) {
+      _idleController.repeat(reverse: true);
+    } else if (!want && _idleController.isAnimating) {
+      _idleController.stop();
+      _idleController.reset();
+    }
   }
 
   @override
   void didUpdateWidget(covariant DiceWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Keep the settled face in sync; never fight the running shuffle.
-    if (!_tossController.isAnimating &&
-        widget.value != null &&
-        widget.value != oldWidget.value) {
-      setState(() => _displayValue = widget.value!);
+    if (oldWidget.timeScale != widget.timeScale) {
+      _tossController.duration = _tossDuration;
     }
+    // Keep the settled face in sync; never fight the running shuffle.
+    if (!_tossController.isAnimating && widget.value != oldWidget.value) {
+      setState(() => _displayValue = widget.value);
+    }
+    _syncIdlePulse();
   }
 
   void _handleTap() {
@@ -116,18 +160,22 @@ class _DiceWidgetState extends State<DiceWidget>
     HapticsService.medium();
     // Shuffle faces like a tumbling die until it lands.
     _shuffleTimer?.cancel();
+    final interval =
+        (70 * widget.timeScale).round().clamp(30, 120);
     _shuffleTimer =
-        Timer.periodic(const Duration(milliseconds: 70), (_) {
+        Timer.periodic(Duration(milliseconds: interval), (_) {
       setState(() => _displayValue = _random.nextInt(6) + 1);
     });
     _tossController.forward(from: 0.0);
     widget.onRoll();
+    _syncIdlePulse();
   }
 
   @override
   void dispose() {
     _shuffleTimer?.cancel();
     _tossController.dispose();
+    _idleController.dispose();
     super.dispose();
   }
 
@@ -140,15 +188,20 @@ class _DiceWidgetState extends State<DiceWidget>
       onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedBuilder(
-        animation: _tossController,
+        animation: Listenable.merge([_tossController, _idleController]),
         builder: (context, child) {
           final tossing = _tossController.isAnimating;
+          final idle = !tossing &&
+              widget.canRoll &&
+              _idleController.isAnimating;
+          final idleScale = idle ? _idlePulse.value : 1.0;
+          final idleLift = idle ? -3.0 * (_idlePulse.value - 1.0) / 0.06 : 0.0;
           return Transform.translate(
-            offset: Offset(0, tossing ? _jump.value : 0.0),
+            offset: Offset(0, (tossing ? _jump.value : 0.0) + idleLift),
             child: Transform.rotate(
               angle: tossing ? _wobble.value : 0.0,
               child: Transform.scale(
-                scale: tossing ? _punch.value : 1.0,
+                scale: (tossing ? _punch.value : 1.0) * idleScale,
                 child: Container(
                   width: s,
                   height: s,
@@ -249,12 +302,14 @@ class _DiceWidgetState extends State<DiceWidget>
 }
 
 class _DiceFacePainter extends CustomPainter {
-  final int value;
+  /// Null draws the neutral blank face (shown before the first roll).
+  final int? value;
   final LudoColor color;
   _DiceFacePainter(this.value, this.color);
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (value == null) return;
     // Flat, high-contrast pips — readable mid-tumble and at a glance.
     final dotR = size.width * 0.135;
     void pip(double x, double y) {

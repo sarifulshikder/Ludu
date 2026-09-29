@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import 'ludo_color.dart';
 import 'token.dart';
 
@@ -8,13 +10,20 @@ class Player {
   final List<Token> tokens;
   final int? finishRank; // 1 for 1st, 2 for 2nd, etc. null if still active
 
+  /// Team index for 2v2 mode (§E): Team A = Red + Yellow (0),
+  /// Team B = Green + Blue (1). In Classic mode each player is their
+  /// own team (teamId == id).
+  final int teamId;
+
   Player({
     required this.id,
     required this.name,
     required this.color,
     List<Token>? tokens,
     this.finishRank,
-  }) : tokens = tokens ??
+    int? teamId,
+  })  : teamId = teamId ?? id,
+        tokens = tokens ??
             List.generate(
               4,
               (index) => Token(id: index, color: color, step: -1),
@@ -33,6 +42,7 @@ class Player {
     List<Token>? tokens,
     int? finishRank,
     bool clearRank = false,
+    int? teamId,
   }) {
     return Player(
       id: id ?? this.id,
@@ -40,8 +50,17 @@ class Player {
       color: color ?? this.color,
       tokens: tokens ?? this.tokens,
       finishRank: clearRank ? null : (finishRank ?? this.finishRank),
+      teamId: teamId ?? this.teamId,
     );
   }
+
+  /// Display name for a team index.
+  static String teamName(int teamId) => teamId == 0 ? 'Team A' : 'Team B';
+
+  /// Linking accent per team (§E): gold ring for A, ice-blue for B.
+  static Color teamAccent(int teamId) => teamId == 0
+      ? const Color(0xFFF2C14E)
+      : const Color(0xFF4DD0E1);
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -49,6 +68,7 @@ class Player {
         'color': color.index,
         'tokens': tokens.map((t) => t.toJson()).toList(),
         'finishRank': finishRank,
+        'teamId': teamId,
       };
 
   factory Player.fromJson(Map<String, dynamic> json) {
@@ -68,6 +88,7 @@ class Player {
               (e as Map).cast<String, dynamic>(), color))
           .toList(),
       finishRank: json['finishRank'] as int?,
+      teamId: (json['teamId'] as int?) ?? (json['id'] as int? ?? 0),
     );
   }
 

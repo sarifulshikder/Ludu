@@ -4,6 +4,7 @@ import 'package:ludu/models/game_settings.dart';
 import 'package:ludu/models/game_state.dart';
 import 'package:ludu/models/ludo_color.dart';
 import 'package:ludu/models/player.dart';
+import 'package:ludu/models/token.dart';
 import 'package:ludu/services/dice_service.dart';
 import 'package:ludu/services/persistence.dart';
 import 'package:ludu/state/game_controller.dart';
@@ -568,6 +569,12 @@ void main() {
       expect(s.endAtFirstWinner, isFalse);
       expect(s.sound, isTrue);
       expect(s.vibration, isTrue);
+      expect(s.volume, equals(0.8));
+      expect(s.fastAnimation, isFalse);
+      expect(s.timeScale, equals(1.0));
+      expect(
+          const GameSettings(fastAnimation: true).timeScale,
+          lessThan(1.0));
     });
 
     test('Mid-turn save round-trips through JSON losslessly', () {
@@ -602,6 +609,46 @@ void main() {
       expect(c2.state.mustSelectToken, isTrue);
     });
 
+    test('Neutral dice: no last roll before a player rolls', () {
+      final c = newGame([6], players: 2, first: 0);
+      expect(c.state.lastRolls, equals([null, null]));
+      c.rollDice();
+      expect(c.state.lastRolls[0], equals(6));
+      expect(c.state.lastRolls[1], isNull);
+    });
+
+    test('Last move is recorded for the follow highlight', () {
+      final c = newGame([6], players: 2, first: 0);
+      expect(c.state.lastMoveToken, isNull);
+      c.rollDice();
+      c.moveToken(1);
+      expect(c.state.lastMoveToken, equals(1));
+      expect(c.state.lastMoveFrom, equals(-1));
+      expect(c.state.lastMoveTo, equals(0));
+      expect(c.state.lastMoveColor,
+          equals(c.state.players[0].color.index));
+      // The next roll clears the highlight.
+      c.rollDice();
+      expect(c.state.lastMoveToken, isNull);
+    });
+
+    test('Save round-trips team mode, rolls and last move', () {
+      final c = GameController(
+        diceService: ScriptedDiceService([6]),
+        persistence: MemoryPersistence(),
+      );
+      c.startNewGame(playerCount: 4, firstPlayerIndex: 0, teamMode: true);
+      c.rollDice();
+      c.moveToken(0);
+      final restored = GameState.fromJson(c.state.toJson());
+      expect(restored.teamMode, isTrue);
+      expect(restored.players.map((p) => p.teamId).toList(),
+          equals([0, 1, 0, 1]));
+      expect(restored.lastRolls[0], equals(6));
+      expect(restored.lastMoveToken, equals(0));
+      expect(restored.lastMoveTo, equals(0));
+    });
+
     test('In-progress games are saved; finished games clear the save',
         () async {
       final persistence = MemoryPersistence();
@@ -622,6 +669,128 @@ void main() {
       expect(c.state.phase, equals(GamePhase.finished));
       await Future<void>.delayed(Duration.zero);
       expect(await persistence.loadGame(), isNull);
+    });
+  });
+
+  // ---------------------------------------------------------- §E team 2v2
+  group('Team 2v2 (§E)', () {
+    GameController newTeamGame(List<int> script, {int first = 0}) {
+      final c = GameController(
+        diceService: ScriptedDiceService(script),
+        persistence: MemoryPersistence(),
+      );
+      c.startNewGame(
+          playerCount: 4, firstPlayerIndex: first, teamMode: true);
+      return c;
+    }
+
+    test('Teams are Red+Yellow vs Green+Blue, alternating turns', () {
+      final c = newTeamGame([1], first: 0);
+      expect(c.state.teamMode, isTrue);
+      expect(c.state.players.map((p) => p.teamId).toList(),
+          equals([0, 1, 0, 1]));
+      // Seats stay clockwise Red, Green, Yellow, Blue.
+      expect(
+        c.state.players.map((p) => p.color).toList(),
+        equals([
+          LudoColor.red,
+          LudoColor.green,
+          LudoColor.yellow,
+          LudoColor.blue,
+        ]),
+      );
+      expect(Player.teamName(0), equals('Team A'));
+      expect(Player.teamName(1), equals('Team B'));
+    });
+
+    test('Teammates never capture each other and share squares', () {
+      final c = newTeamGame([3], first: 0);
+      // Red token at step 1 -> 4 (global 4, not safe).
+      setSteps(c, 0, [1, -1, -1, -1]);
+      // Yellow (teammate) token on global 4 == yellow step 30.
+      setSteps(c, 2, [30, -1, -1, -1]);
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[0].tokens[0].step, equals(4));
+      expect(c.state.players[2].tokens[0].step, equals(30));
+      expect(c.state.totalCaptures, equals(0));
+    });
+
+    test('Opponents still capture singletons in team mode', () {
+      final c = newTeamGame([3], first: 0);
+      setSteps(c, 0, [1, -1, -1, -1]);
+      // Green (opponent) token on global 4 == green step 43.
+      setSteps(c, 1, [43, -1, -1, -1]);
+      c.rollDice();
+      c.moveToken(0);
+      expect(c.state.players[1].tokens[0].step, equals(-1));
+      expect(c.state.totalCaptures, equals(1));
+      // Capture bonus still applies.
+      expect(c.state.currentPlayerIndex, equals(0));
+    });
+
+    test('Teammate stacks block opponents even with Block rule OFF', () {
+      final c = newTeamGame([3], first: 1);
+      // Green to move; Red+Yellow (Team A) stack on global 4.
+      setSteps(c, 0, [4, 4, -1, -1]); // red steps, global 4
+      setSteps(c, 2, [30, -1, -1, -1]); // yellow step, global 4
+      // Green token at step 40 -> 43 (global 4): (13 + 43) % 52 = 4.
+      setSteps(c, 1, [40, -1, -1, -1]);
+      c.rollDice();
+      // Landing on the protected stack is illegal.
+      expect(c.state.movableTokenIds.contains(0), isFalse);
+    });
+
+    test('Team wins when all 8 tokens reach the center', () {
+      final c = newTeamGame([2], first: 2);
+      final p0 = c.state.players[0];
+      final p2 = c.state.players[2];
+      final p0Tokens =
+          List.generate(4, (i) => Token(id: i, color: p0.color, step: 56));
+      final p2Tokens =
+          List.generate(4, (i) => Token(id: i, color: p2.color, step: 56));
+      p2Tokens[3] = p2Tokens[3].copyWith(step: 54);
+      final players = List<Player>.from(c.state.players);
+      players[0] = p0.copyWith(tokens: p0Tokens);
+      players[2] = p2.copyWith(tokens: p2Tokens);
+      c.state = c.state.copyWith(players: players, currentPlayerIndex: 2);
+
+      c.rollDice(); // 2, exact finish for token 3
+      c.moveToken(3);
+
+      expect(c.state.phase, equals(GamePhase.finished));
+      expect(c.state.finishOrder.length, equals(2));
+      expect(
+        c.state.finishOrder.map((p) => p.teamId).toSet(),
+        equals({0}),
+      );
+      expect(c.state.finishOrder.map((p) => p.id).toSet(),
+          equals({0, 2}));
+    });
+
+    test('A finished player keeps rolling to move the teammate', () {
+      final c = newTeamGame([6], first: 0);
+      // Red all home; Yellow has everything in base.
+      setSteps(c, 0, [56, 56, 56, 56]);
+      c.rollDice(); // 6 on Red's turn
+      // Red has no own moves: the teammate's exits are offered instead.
+      expect(c.state.movableTokenIds, equals([0, 1, 2, 3]));
+      c.moveToken(2); // moves YELLOW's token 2 out
+      expect(c.state.players[2].tokens[2].step, equals(0));
+      expect(c.state.players[0].tokens.every((t) => t.isHome), isTrue);
+      // Six bonus works the same: Red rolls again.
+      expect(c.state.currentPlayerIndex, equals(0));
+    });
+
+    test('Three 6s still void the third roll in team mode', () {
+      final c = newTeamGame([6, 6, 6], first: 1);
+      c.rollDice();
+      c.moveToken(0);
+      c.rollDice();
+      c.moveToken(0);
+      c.rollDice(); // third 6 void
+      expect(c.state.currentPlayerIndex, equals(2));
+      expect(c.state.consecutiveSixes, equals(0));
     });
   });
 }

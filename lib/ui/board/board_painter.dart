@@ -16,7 +16,8 @@ import '../../models/ludo_color.dart';
 /// * Center trophy medallion (4 petals + gold crown hub).
 class BoardPainter extends CustomPainter {
   /// Tall-cell proportions (width:height) for portrait phones.
-  static const double cellAspect = 1.33;
+  /// Width is capped by 15 columns, so height carries the size gains.
+  static const double cellAspect = 1.45;
 
   final bool isDark;
   final LudoColor? activeColor;
@@ -67,8 +68,9 @@ class BoardPainter extends CustomPainter {
     );
 
     // Clean light paper with a faint radial light from the center.
-    final inner = Rect.fromLTWH(tw * 0.18, th * 0.18,
-        size.width - tw * 0.36, size.height - th * 0.36);
+    // Minimal margins so every pixel goes to the path cells.
+    final inner = Rect.fromLTWH(tw * 0.10, th * 0.10,
+        size.width - tw * 0.20, size.height - th * 0.20);
     final innerR =
         RRect.fromRectAndRadius(inner, Radius.circular(tu * 0.42));
     final glow = RadialGradient(
@@ -270,7 +272,7 @@ class BoardPainter extends CustomPainter {
               end: Alignment.bottomRight,
             ).createShader(rect),
         );
-        _chevron(canvas, rect.center, tu * 0.20,
+        _chevron(canvas, rect.center, tu * 0.24,
             Colors.white.withOpacity(0.85), color);
         canvas.drawRRect(
           rrect,
@@ -407,9 +409,9 @@ class BoardPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.6,
       );
-      _star(canvas, c + const Offset(0, 1.0), tu * 0.34,
+      _star(canvas, c + const Offset(0, 1.0), tu * 0.40,
           Paint()..color = _goldDeep.withOpacity(0.9), fill: true);
-      _star(canvas, c, tu * 0.32, Paint()..color = Colors.white,
+      _star(canvas, c, tu * 0.38, Paint()..color = Colors.white,
           fill: true);
     }
   }
@@ -452,7 +454,7 @@ class BoardPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.6,
       );
-      _arrow(canvas, c, tu * 0.30, Colors.white, i);
+      _arrow(canvas, c, tu * 0.34, Colors.white, i);
     }
   }
 

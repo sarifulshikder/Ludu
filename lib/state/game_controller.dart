@@ -68,7 +68,9 @@ class GameController extends StateNotifier<GameState> {
   }
 
   static List<Player> _createDefaultPlayers(int count) {
-    // Clockwise turn order: Red, Green, Yellow, Blue (§1).
+    // Seats double as turn order — clockwise: Red, Green, Yellow, Blue.
+    // P1 Red top-left, P2 Green top-right, P3 Yellow bottom-right,
+    // P4 Blue bottom-left.
     const defaultColors = [
       LudoColor.red,
       LudoColor.green,
@@ -87,25 +89,33 @@ class GameController extends StateNotifier<GameState> {
 
   /// Default seat colors: 2 players sit opposite (Red vs Yellow),
   /// 3 players take Red/Green/Yellow, 4 play clockwise Red/Green/Yellow/Blue.
+  /// P3 is Yellow (bottom-right), P4 is Blue (bottom-left).
   static List<LudoColor> defaultColorsFor(int count) {
     if (count == 2) return [LudoColor.red, LudoColor.yellow];
+    if (count == 3) {
+      return [LudoColor.red, LudoColor.green, LudoColor.yellow];
+    }
     return const [
       LudoColor.red,
       LudoColor.green,
       LudoColor.yellow,
       LudoColor.blue,
-    ].sublist(0, count.clamp(2, 4));
+    ];
   }
 
   /// Starts a new game. The first player is chosen randomly (§1) unless
   /// [firstPlayerIndex] is given (deterministic tests / rematch fairness).
+  /// When [teamMode] is true (exactly 4 players), Red + Yellow form Team A
+  /// and Green + Blue form Team B — opposite seats, alternating turns (§E).
   void startNewGame({
     required int playerCount,
     List<String>? playerNames,
     List<LudoColor>? playerColors,
     int? firstPlayerIndex,
+    bool teamMode = false,
   }) {
     final count = playerCount.clamp(2, 4);
+    final teams = teamMode && count == 4;
     final colors = playerColors ?? defaultColorsFor(count);
 
     final players = List.generate(
@@ -118,6 +128,7 @@ class GameController extends StateNotifier<GameState> {
             ? playerNames[i].trim()
             : 'Player ${i + 1}',
         color: colors[i],
+        teamId: teams ? ((i == 0 || i == 2) ? 0 : 1) : i,
       ),
     );
 
@@ -128,7 +139,10 @@ class GameController extends StateNotifier<GameState> {
       players: players,
       currentPlayerIndex: first,
       phase: GamePhase.playing,
-      statusMessage: '${players[first].name} starts! Tap the dice.',
+      teamMode: teams,
+      statusMessage: teams
+          ? '${players[first].name} (${Player.teamName(players[first].teamId)}) starts! Tap the dice.'
+          : '${players[first].name} starts! Tap the dice.',
     );
     _persist();
   }
@@ -155,6 +169,11 @@ class GameController extends StateNotifier<GameState> {
     final int totalSixes = state.totalSixes + (roll == 6 ? 1 : 0);
     final int totalTurns = state.totalTurns + 1;
 
+    final lastRolls = List<int?>.from(state.lastRolls);
+    if (state.currentPlayerIndex < lastRolls.length) {
+      lastRolls[state.currentPlayerIndex] = roll;
+    }
+
     // §5: three consecutive 6s in one turn — the third 6 is voided, no move
     // is made (moves from the first two 6s stay), turn passes immediately.
     if (newConsecutiveSixes >= 3) {
@@ -166,6 +185,8 @@ class GameController extends StateNotifier<GameState> {
         statusMessage:
             'Three 6s in a row! Roll voided for ${player.name}.',
         movableTokenIds: const [],
+        lastRolls: lastRolls,
+        clearLastMove: true,
       );
       advanceToNextPlayer();
       return roll;
@@ -189,12 +210,15 @@ class GameController extends StateNotifier<GameState> {
       statusMessage: message,
       totalSixes: totalSixes,
       totalTurns: totalTurns,
+      lastRolls: lastRolls,
+      clearLastMove: true,
     );
 
     // §4: no legal move — the turn passes automatically (the UI adds a
     // short beat before enabling the next dice). A 6 with no legal move
     // earns no bonus: no move was actually made (§5).
     if (movableTokens.isEmpty) {
+      AudioService.playNoMove();
       advanceToNextPlayer();
     } else {
       _persist();
@@ -203,24 +227,38 @@ class GameController extends StateNotifier<GameState> {
     return roll;
   }
 
+  /// Resolves whose tokens the current roller actually moves. In Team 2v2,
+  /// a player who already brought all 4 home keeps rolling and moves
+  /// their teammate's tokens with those rolls (§E, "helping teammate").
+  Player _actingOwner(Player roller) {
+    final current = state.players.firstWhere(
+      (p) => p.id == roller.id,
+      orElse: () => roller,
+    );
+    if (state.teamMode && current.hasFinished) {
+      return state.players.firstWhere(
+        (p) => p.teamId == current.teamId && p.id != current.id,
+      );
+    }
+    return current;
+  }
+
   /// Determines which tokens of [player] can legally move with [roll].
   ///
   /// * Base exit needs a 6 (lands on the own, always-safe start square).
   /// * Reaching the center needs the exact number — no overshoot.
-  /// * With the Block rule ON, landing on an opponent stack (2+ same-color
-  ///   tokens on a non-safe square) is illegal.
+  /// * Landing on an opponent stack (2+ same-color tokens on a non-safe
+  ///   square) is illegal with the Block rule ON — and always in Team 2v2
+  ///   (§E). Teammate tokens never block each other.
   List<int> getMovableTokenIds(Player player, int roll) {
-    final playerIndex =
-        state.players.indexWhere((p) => p.id == player.id);
-    final ownerIdx = playerIndex == -1
-        ? state.currentPlayerIndex
-        : playerIndex;
-    final blocks = settings.blockRule
+    final owner = _actingOwner(player);
+    final ownerIdx = state.players.indexWhere((p) => p.id == owner.id);
+    final blocks = (settings.blockRule || state.teamMode)
         ? _opponentBlockSquares(ownerIdx)
         : const <int>{};
 
     final List<int> movable = [];
-    for (final token in player.tokens) {
+    for (final token in owner.tokens) {
       if (token.isHome) continue;
 
       if (token.isInBase) {
@@ -230,10 +268,10 @@ class GameController extends StateNotifier<GameState> {
         if (targetStep > 56) continue; // exact roll required
         if (targetStep <= 50 && blocks.isNotEmpty) {
           final landing =
-              (player.color.startSquare + targetStep) % 52;
+              (owner.color.startSquare + targetStep) % 52;
           if (!BoardCoordinates.isSafeSquare(landing) &&
               blocks.contains(landing)) {
-            continue; // blocked square — cannot land (§6)
+            continue; // blocked square — cannot land (§6, §E)
           }
         }
         movable.add(token.id);
@@ -243,11 +281,16 @@ class GameController extends StateNotifier<GameState> {
   }
 
   /// Global track squares holding 2+ tokens of one opponent color on a
-  /// non-safe square (only meaningful with the Block rule ON).
+  /// non-safe square. Teammates are never opponents (§E).
   Set<int> _opponentBlockSquares(int ownerIdx) {
+    final ownerTeam = state.players[ownerIdx].teamId;
     final Map<int, Map<int, int>> counts = {};
     for (int p = 0; p < state.players.length; p++) {
       if (p == ownerIdx) continue;
+      if (state.teamMode &&
+          state.players[p].teamId == ownerTeam) {
+        continue; // teammates share freely, never block
+      }
       for (final token in state.players[p].tokens) {
         if (!token.isOnOuterTrack) continue;
         final g = token.globalTrackIndex!;
@@ -267,6 +310,7 @@ class GameController extends StateNotifier<GameState> {
 
   /// Moves [tokenId] for the current player. There is no undo (§4) and no
   /// voluntary passing: with at least one legal move the player must move.
+  /// In Team 2v2 a finished player moves their teammate's tokens (§E).
   void moveToken(int tokenId) {
     if (!state.mustSelectToken ||
         !state.movableTokenIds.contains(tokenId)) {
@@ -274,32 +318,43 @@ class GameController extends StateNotifier<GameState> {
     }
 
     final player = state.currentPlayer;
-    final token = player.tokens.firstWhere((t) => t.id == tokenId);
+    final owner = _actingOwner(player);
+    final ownerIdx = state.players.indexWhere((p) => p.id == owner.id);
+    final helping = ownerIdx != state.currentPlayerIndex;
+    final token = owner.tokens.firstWhere((t) => t.id == tokenId);
     final roll = state.currentDiceRoll!;
+    final fromStep = token.step;
 
     final int newStep = token.isInBase ? 0 : token.step + roll;
 
     final updatedToken = token.copyWith(step: newStep);
-    final updatedTokens = List<Token>.from(player.tokens);
+    final updatedTokens = List<Token>.from(owner.tokens);
     updatedTokens[token.id] = updatedToken;
 
-    var updatedPlayer = player.copyWith(tokens: updatedTokens);
+    var updatedOwner = owner.copyWith(tokens: updatedTokens);
     final updatedPlayers = List<Player>.from(state.players);
-    updatedPlayers[state.currentPlayerIndex] = updatedPlayer;
+    updatedPlayers[ownerIdx] = updatedOwner;
 
     int totalCaptures = state.totalCaptures;
-    String status = '${player.name} moved token ${token.id + 1}.';
+    String status = helping
+        ? '${player.name} moved ${owner.name}\u2019s token ${token.id + 1}.'
+        : '${player.name} moved token ${token.id + 1}.';
     bool didCapture = false;
 
-    // §6: only the exact landing square captures; passing over is safe.
-    // Base, home column and safe squares can never be captured.
+    // §6/§E: only the exact landing square captures; passing over is safe.
+    // Base, home column and safe squares can never be captured, and
+    // teammates never capture each other.
     if (newStep >= 0 && newStep <= 50) {
       final landingGlobalIndex =
-          (player.color.startSquare + newStep) % 52;
+          (owner.color.startSquare + newStep) % 52;
 
       if (!BoardCoordinates.isSafeSquare(landingGlobalIndex)) {
         for (int p = 0; p < updatedPlayers.length; p++) {
-          if (p == state.currentPlayerIndex) continue;
+          if (p == ownerIdx) continue;
+          if (state.teamMode &&
+              updatedPlayers[p].teamId == owner.teamId) {
+            continue;
+          }
           final opponent = updatedPlayers[p];
           final opponentTokens = List<Token>.from(opponent.tokens);
           bool opponentCaptured = false;
@@ -332,20 +387,39 @@ class GameController extends StateNotifier<GameState> {
     if (didReachHome) {
       AudioService.playSafe();
       HapticsService.victory();
-      status = '🎉 ${player.name}\u2019s token reached the center!';
+      status = '🎉 ${owner.name}\u2019s token reached the center!';
     }
 
-    // §7: the moment all 4 tokens reach the center the player takes the
-    // next rank. Unless "end at first winner" is on, the game continues
-    // for the remaining players; the last one standing takes the last rank.
+    // §7/§E: Classic — the moment all 4 tokens reach the center the player
+    // takes the next rank (the game continues unless end-at-first-winner).
+    // Team 2v2 — the team wins when all 8 tokens are home.
     final List<Player> newFinishOrder = List.from(state.finishOrder);
     bool isOver = false;
     bool justFinished = false;
-    if (updatedPlayer.hasFinished && updatedPlayer.finishRank == null) {
+    if (state.teamMode) {
+      final mates = updatedPlayers
+          .where((p) => p.teamId == player.teamId)
+          .toList();
+      if (mates.every((m) => m.tokens.every((t) => t.isHome))) {
+        final rank = newFinishOrder.length + 1;
+        for (final m in mates) {
+          final idx = updatedPlayers.indexWhere((p) => p.id == m.id);
+          final ranked = m.copyWith(finishRank: rank);
+          updatedPlayers[idx] = ranked;
+          newFinishOrder.add(ranked);
+        }
+        updatedOwner = updatedPlayers[ownerIdx];
+        justFinished = true;
+        isOver = true;
+        status =
+            '🏆 ${Player.teamName(player.teamId)} wins the game!';
+      }
+    } else if (updatedOwner.hasFinished &&
+        updatedOwner.finishRank == null) {
       final rank = newFinishOrder.length + 1;
-      updatedPlayer = updatedPlayer.copyWith(finishRank: rank);
-      updatedPlayers[state.currentPlayerIndex] = updatedPlayer;
-      newFinishOrder.add(updatedPlayer);
+      updatedOwner = updatedOwner.copyWith(finishRank: rank);
+      updatedPlayers[ownerIdx] = updatedOwner;
+      newFinishOrder.add(updatedOwner);
       justFinished = true;
       status = '🏆 ${player.name} finished ${_ordinal(rank)}!';
       if (settings.endAtFirstWinner) {
@@ -377,9 +451,17 @@ class GameController extends StateNotifier<GameState> {
       finishOrder: newFinishOrder,
       phase: isOver ? GamePhase.finished : GamePhase.playing,
       totalCaptures: totalCaptures,
-      statusMessage: status,
+      statusMessage: isOver
+          ? (state.teamMode
+              ? '🏆 ${Player.teamName(player.teamId)} wins! All 8 tokens home.'
+              : status)
+          : status,
       clearDiceRoll: true,
       movableTokenIds: const [],
+      lastMoveColor: owner.color.index,
+      lastMoveToken: tokenId,
+      lastMoveFrom: fromStep,
+      lastMoveTo: newStep,
     );
 
     if (isOver) {
