@@ -38,7 +38,7 @@ jobs:
         run: flutter analyze
 
       - name: Run unit & widget tests
-        run: flutter test --coverage
+        run: flutter test --coverage --reporter expanded
 
   build-apk:
     name: Build Android Release APK
