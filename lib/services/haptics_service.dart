@@ -5,42 +5,40 @@ class HapticsService {
 
   static void setEnabled(bool v) => isEnabled = v;
 
-  static void light() {
+  /// Fire-and-forget haptic that can never crash the caller.
+  /// On headless `flutter test` unit tests there is no platform binding, so
+  /// every platform-channel error (sync or async) is swallowed here.
+  static void _buzz(Future<void> Function() play) {
     if (!isEnabled) return;
-    HapticFeedback.lightImpact();
+    try {
+      play().then((_) {}, onError: (_) {});
+    } catch (_) {
+      // No platform binding (e.g. headless unit tests) — ignore.
+    }
   }
 
-  static void medium() {
-    if (!isEnabled) return;
-    HapticFeedback.mediumImpact();
-  }
+  static void light() => _buzz(HapticFeedback.lightImpact);
 
-  static void heavy() {
-    if (!isEnabled) return;
-    HapticFeedback.heavyImpact();
-  }
+  static void medium() => _buzz(HapticFeedback.mediumImpact);
 
-  static void selection() {
-    if (!isEnabled) return;
-    HapticFeedback.selectionClick();
-  }
+  static void heavy() => _buzz(HapticFeedback.heavyImpact);
+
+  static void selection() => _buzz(HapticFeedback.selectionClick);
 
   static void capture() {
-    if (!isEnabled) return;
-    HapticFeedback.heavyImpact();
+    _buzz(HapticFeedback.heavyImpact);
     Future.delayed(const Duration(milliseconds: 120), () {
-      if (isEnabled) HapticFeedback.heavyImpact();
-    });
+      _buzz(HapticFeedback.heavyImpact);
+    }).then((_) {}, onError: (_) {});
   }
 
   static void victory() {
-    if (!isEnabled) return;
-    HapticFeedback.mediumImpact();
+    _buzz(HapticFeedback.mediumImpact);
     Future.delayed(const Duration(milliseconds: 150), () {
-      if (isEnabled) HapticFeedback.heavyImpact();
-    });
+      _buzz(HapticFeedback.heavyImpact);
+    }).then((_) {}, onError: (_) {});
     Future.delayed(const Duration(milliseconds: 300), () {
-      if (isEnabled) HapticFeedback.mediumImpact();
-    });
+      _buzz(HapticFeedback.mediumImpact);
+    }).then((_) {}, onError: (_) {});
   }
 }

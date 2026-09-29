@@ -18,7 +18,6 @@ class BoardPainter extends CustomPainter {
 
   BoardPainter({required this.isDark, this.activeColor});
 
-  Color get _trackFill => const Color(0xFFF7F3EA);
   Color get _trackRule => isDark ? const Color(0xFF8E99B0) : const Color(0xFFA39A87);
   Color get _ink => const Color(0xFF101A30);
   Color get _paper => const Color(0xFFFDFBF6);

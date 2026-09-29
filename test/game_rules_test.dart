@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ludu/core/board_coordinates.dart';
 import 'package:ludu/models/game_state.dart';
-import 'package:ludu/models/ludo_color.dart';
 import 'package:ludu/models/token.dart';
 import 'package:ludu/services/dice_service.dart';
 import 'package:ludu/state/game_controller.dart';

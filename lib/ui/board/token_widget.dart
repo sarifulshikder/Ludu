@@ -217,7 +217,7 @@ class _OrbPainter extends CustomPainter {
     );
 
     // Specular highlight (top-left gloss).
-    canvas.drawEllipse(
+    canvas.drawOval(
       Rect.fromCenter(
         center: c + Offset(-r * 0.34, -r * 0.40),
         width: r * 0.95,

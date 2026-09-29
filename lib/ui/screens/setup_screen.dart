@@ -26,7 +26,7 @@ class SetupScreen extends StatefulWidget {
 class _SetupScreenState extends State<SetupScreen> {
   int _playerCount = 4;
   late List<TextEditingController> _nameControllers;
-  List<LudoColor> _selectedColors = [
+  final List<LudoColor> _selectedColors = [
     LudoColor.red,
     LudoColor.green,
     LudoColor.yellow,
@@ -458,21 +458,25 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 20),
 
               // Settings: sound + vibration toggles.
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: widget.isDark
-                      ? const Color(0xFF141D2E)
-                      : Colors.white,
+              // Material (not Container) background so the SwitchListTiles
+              // paint their ink on a Material ancestor — otherwise the
+              // framework throws in debug builds.
+              Material(
+                color: widget.isDark
+                    ? const Color(0xFF141D2E)
+                    : Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
+                  side: BorderSide(
                     color: widget.isDark
                         ? const Color(0xFF283650)
                         : const Color(0xFFD6CEBD),
                   ),
                 ),
-                child: Column(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 6),
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Padding(
@@ -527,6 +531,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       },
                     ),
                   ],
+                  ),
                 ),
               ),
               const SizedBox(height: 20),

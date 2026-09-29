@@ -464,11 +464,12 @@ class _PlayerBoxWidgetState extends State<PlayerBoxWidget>
           ],
         );
       case 3:
+        // Expanded middle makes the row overflow-proof by construction:
+        // fixed content is only 2 pips wide, the rest is flexible.
         return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Column(children: [pip(), const Spacer()]),
-            Center(child: pip()),
+            Expanded(child: Center(child: pip())),
             Column(children: [const Spacer(), pip()]),
           ],
         );
