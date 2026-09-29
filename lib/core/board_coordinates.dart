@@ -141,31 +141,33 @@ class BoardCoordinates {
     LudoColor.blue: BoardPoint(7.8, 7.0),
   };
 
-  /// Base slot coordinates for 4 tokens per player.
+  /// Base slot coordinates for 4 tokens per player, spread toward the
+  /// corners so each box's own dice fits in the middle of the pieces
+  /// without covering any token's tap point.
   static const Map<LudoColor, List<BoardPoint>> baseSlots = {
     LudoColor.red: [
-      BoardPoint(1.8, 1.8),
-      BoardPoint(1.8, 3.8),
-      BoardPoint(3.8, 1.8),
-      BoardPoint(3.8, 3.8),
+      BoardPoint(1.5, 1.5),
+      BoardPoint(1.5, 4.1),
+      BoardPoint(4.1, 1.5),
+      BoardPoint(4.1, 4.1),
     ],
     LudoColor.green: [
-      BoardPoint(1.8, 10.8),
-      BoardPoint(1.8, 12.8),
-      BoardPoint(3.8, 10.8),
-      BoardPoint(3.8, 12.8),
+      BoardPoint(1.5, 10.5),
+      BoardPoint(1.5, 13.1),
+      BoardPoint(4.1, 10.5),
+      BoardPoint(4.1, 13.1),
     ],
     LudoColor.yellow: [
-      BoardPoint(10.8, 10.8),
-      BoardPoint(10.8, 12.8),
-      BoardPoint(12.8, 10.8),
-      BoardPoint(12.8, 12.8),
+      BoardPoint(10.5, 10.5),
+      BoardPoint(10.5, 13.1),
+      BoardPoint(13.1, 10.5),
+      BoardPoint(13.1, 13.1),
     ],
     LudoColor.blue: [
-      BoardPoint(10.8, 1.8),
-      BoardPoint(10.8, 3.8),
-      BoardPoint(12.8, 1.8),
-      BoardPoint(12.8, 3.8),
+      BoardPoint(10.5, 1.5),
+      BoardPoint(10.5, 4.1),
+      BoardPoint(13.1, 1.5),
+      BoardPoint(13.1, 4.1),
     ],
   };
 

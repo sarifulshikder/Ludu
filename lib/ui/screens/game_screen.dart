@@ -9,13 +9,13 @@ import '../../state/game_controller.dart';
 import '../board/board_backdrop.dart';
 import '../board/ludo_board.dart';
 import '../board/token_widget.dart';
-import '../widgets/dice_widget.dart';
 import 'victory_screen.dart';
 
-/// Full edge-to-edge board: the 15×15 grid spans the full screen width,
-/// each player's box keeps its 4 tokens centered in the middle, and one
-/// grand dice sits in the board's center as the single roll control.
-/// No bottom roll box — tap the dice to roll.
+/// Full edge-to-edge board: the 15×15 grid spans the full screen width.
+/// Player 1 top-left, Player 2 top-right, Player 3 bottom-left, Player 4
+/// bottom-right — each corner box holds its 4 tokens with that player's
+/// own dice in the middle of the pieces. No bottom roll box: tap your
+/// dice to roll.
 class GameScreen extends ConsumerStatefulWidget {
   final VoidCallback onNewGame;
   final VoidCallback onToggleTheme;
@@ -149,8 +149,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       );
     }
 
-    final activeColor = gameState.currentPlayer.color;
-
     return Scaffold(
       backgroundColor: widget.isDark ? const Color(0xFF070B14) : const Color(0xFFEDE7DC),
       body: Stack(
@@ -192,18 +190,18 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          Positioned.fill(
-                            child: LudoBoard(
-                              gameState: gameState,
-                              onTokenSelected: (tokenId) =>
-                                  controller.moveToken(tokenId),
-                              onRollDice: () => controller.rollDice(),
-                              onAnimatingChanged: (v) =>
-                                  setState(() => _boardAnimating = v),
-                            ),
+                        Positioned.fill(
+                          child: LudoBoard(
+                            gameState: gameState,
+                            onTokenSelected: (tokenId) =>
+                                controller.moveToken(tokenId),
+                            onRollDice: () => controller.rollDice(),
+                            onDiceTap: () =>
+                                _primaryAction(gameState, controller),
+                            onAnimatingChanged: (v) =>
+                                setState(() => _boardAnimating = v),
                           ),
-                          _buildCenterDice(
-                              gameState, controller, activeColor),
+                        ),
                         ],
                       ),
                     ),
@@ -221,32 +219,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// Grand dice in the middle of the board — the single roll control.
-  /// Glows in the active player's color; tap it to roll (or to confirm a
-  /// forced single move). The 4 tokens stay centered in each player's box.
-  Widget _buildCenterDice(
-    GameState gameState,
-    GameController controller,
-    LudoColor activeColor,
-  ) {
-    final idleFace = (gameState.currentPlayerIndex + 1).clamp(1, 6);
-    final singleMovable = gameState.mustSelectToken &&
-        gameState.movableTokenIds.length == 1;
-    return Positioned.fill(
-      child: Center(
-        child: DiceWidget(
-          value: gameState.currentDiceRoll ?? idleFace,
-          isRolling: gameState.isRolling,
-          canRoll:
-              (gameState.canRollDice || singleMovable) && !_boardAnimating,
-          activeColor: activeColor,
-          size: 88,
-          onRoll: () => _primaryAction(gameState, controller),
-        ),
       ),
     );
   }

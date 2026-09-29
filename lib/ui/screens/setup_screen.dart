@@ -27,11 +27,13 @@ class SetupScreen extends StatefulWidget {
 class _SetupScreenState extends State<SetupScreen> {
   int _playerCount = 4;
   late List<TextEditingController> _nameControllers;
+  // Seat order: P1 red top-left, P2 green top-right, P3 blue
+  // bottom-left, P4 yellow bottom-right.
   final List<LudoColor> _selectedColors = [
     LudoColor.red,
     LudoColor.green,
-    LudoColor.yellow,
     LudoColor.blue,
+    LudoColor.yellow,
   ];
   bool _soundOn = !AudioService.isMuted;
   bool _vibrationOn = HapticsService.isEnabled;
@@ -40,8 +42,8 @@ class _SetupScreenState extends State<SetupScreen> {
   final List<LudoColor> _allColors = [
     LudoColor.red,
     LudoColor.green,
-    LudoColor.yellow,
     LudoColor.blue,
+    LudoColor.yellow,
   ];
 
   List<LudoColor> get _activeColors =>

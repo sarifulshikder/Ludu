@@ -284,7 +284,7 @@ void main() {
       expect(controller.state.currentPlayerIndex, equals(0));
     });
 
-    test('Team 2v2 assigns opposite seats as partners', () {
+    test('Team 2v2 assigns left/right columns as partner teams', () {
       final controller = GameController();
       controller.startNewGame(playerCount: 4, teamMode: true);
 

@@ -24,11 +24,13 @@ class GameController extends StateNotifier<GameState> {
         super(GameState(players: _createDefaultPlayers(4)));
 
   static List<Player> _createDefaultPlayers(int count) {
+    // Seat order: P1 red top-left, P2 green top-right, P3 blue
+    // bottom-left, P4 yellow bottom-right.
     const defaultColors = [
       LudoColor.red,
       LudoColor.green,
-      LudoColor.yellow,
       LudoColor.blue,
+      LudoColor.yellow,
     ];
     return List.generate(
       count.clamp(2, 4),
@@ -41,8 +43,9 @@ class GameController extends StateNotifier<GameState> {
   }
 
   /// Starts a new game with [playerCount] and optional custom names/colors.
-  /// When [teamMode] is true (4 players), slots 0&2 form Team A and slots
-  /// 1&3 form Team B — partners sit opposite each other.
+  /// When [teamMode] is true (4 players), slots 0&2 form Team A (left
+  /// column: red + blue) and slots 1&3 form Team B (right column:
+  /// green + yellow).
   void startNewGame({
     required int playerCount,
     List<String>? playerNames,
@@ -57,8 +60,8 @@ class GameController extends StateNotifier<GameState> {
             : [
                 LudoColor.red,
                 LudoColor.green,
-                LudoColor.yellow,
                 LudoColor.blue,
+                LudoColor.yellow,
               ].sublist(0, count));
 
     final players = List.generate(

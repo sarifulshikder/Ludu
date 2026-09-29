@@ -149,9 +149,10 @@ class BoardPainter extends CustomPainter {
           ..strokeWidth = 1.2,
       );
 
-      // Ivory holding panel.
+      // Ivory holding panel — widened slightly so the spread-out token
+      // wells plus the middle dice all sit inside it.
       final panel = Rect.fromLTWH(
-        (col + 0.85) * tile, (row + 0.85) * tile, tile * 4.3, tile * 4.3);
+        (col + 0.7) * tile, (row + 0.7) * tile, tile * 4.6, tile * 4.6);
       final panelR = RRect.fromRectAndRadius(panel, Radius.circular(tile * 0.3));
       canvas.drawRRect(
         panelR,

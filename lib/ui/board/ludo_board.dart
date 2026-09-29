@@ -10,10 +10,14 @@ import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 import 'board_painter.dart';
 import 'token_widget.dart';
+import '../widgets/dice_widget.dart';
 
 /// Edge-to-edge Aurora board.
 ///
 /// * Chunky orbs (~1.04× cell) with thick cell rules — readable from afar.
+/// * Each corner box holds its 4 tokens with that player's own dice in the
+///   middle of the pieces. Only the active player's dice is lit and
+///   tappable; the others rest dimmed.
 /// * Shared squares use a neat 2×2 mini-grid — never messy overlap.
 /// * Discrete hop animation: each step lands and settles before the next.
 ///   The move commits to game state only after the visual lands, and all
@@ -23,6 +27,7 @@ class LudoBoard extends StatefulWidget {
   final GameState gameState;
   final Function(int tokenId) onTokenSelected;
   final VoidCallback? onRollDice;
+  final VoidCallback? onDiceTap;
   final ValueChanged<bool>? onAnimatingChanged;
 
   const LudoBoard({
@@ -30,6 +35,7 @@ class LudoBoard extends StatefulWidget {
     required this.gameState,
     required this.onTokenSelected,
     this.onRollDice,
+    this.onDiceTap,
     this.onAnimatingChanged,
   });
 
@@ -234,6 +240,7 @@ class _LudoBoardState extends State<LudoBoard>
                 ],
                 ..._buildAllTokens(
                     tileSize, trackTokenSize, baseTokenSize),
+                ..._buildBaseDice(tileSize),
                 ..._buildYardLabels(tileSize),
                 if (_burstEmoji != null)
                   Positioned.fill(
@@ -282,6 +289,56 @@ class _LudoBoardState extends State<LudoBoard>
         onTap: () => _handleBaseTap(color),
       ),
     );
+  }
+
+  /// Each player's own dice, centered in the middle of their 4 base
+  /// pieces. Base slots sit ~1.3 tiles from the pieces' midpoint while
+  /// orbs are 1 tile wide, so a 1.5-tile dice sits between them with
+  /// clear tap margins on every token. Only the active player's dice is
+  /// lit and tappable.
+  List<Widget> _buildBaseDice(double tileSize) {
+    final widgets = <Widget>[];
+    // Midpoint of the 4 pieces in board units: [row, col].
+    // Red = top-left, Green = top-right, Blue = bottom-left,
+    // Yellow = bottom-right.
+    const centers = <LudoColor, List<double>>{
+      LudoColor.red: [3.3, 3.3],
+      LudoColor.green: [3.3, 12.3],
+      LudoColor.blue: [12.3, 3.3],
+      LudoColor.yellow: [12.3, 12.3],
+    };
+    for (int pIdx = 0; pIdx < widget.gameState.players.length; pIdx++) {
+      final player = widget.gameState.players[pIdx];
+      final center = centers[player.color]!;
+      final isTurn = pIdx == widget.gameState.currentPlayerIndex;
+      final idleFace = (pIdx + 1).clamp(1, 6);
+      final singleMovable = isTurn &&
+          widget.gameState.mustSelectToken &&
+          widget.gameState.movableTokenIds.length == 1;
+      final canAct = isTurn &&
+          (widget.gameState.canRollDice || singleMovable) &&
+          _animatingTokenKey == null;
+      final diceSize = tileSize * 1.5;
+      final dice = DiceWidget(
+        value:
+            isTurn ? (widget.gameState.currentDiceRoll ?? idleFace) : idleFace,
+        isRolling: isTurn && widget.gameState.isRolling,
+        canRoll: canAct,
+        activeColor: player.color,
+        size: diceSize,
+        onRoll: () => widget.onDiceTap?.call(),
+      );
+      widgets.add(
+        Positioned(
+          left: center[1] * tileSize - diceSize / 2,
+          top: center[0] * tileSize - diceSize / 2,
+          width: diceSize,
+          height: diceSize,
+          child: canAct ? dice : Opacity(opacity: 0.55, child: dice),
+        ),
+      );
+    }
+    return widgets;
   }
 
   List<Widget> _buildYardLabels(double tileSize) {
