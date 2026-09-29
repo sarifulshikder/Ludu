@@ -41,12 +41,16 @@ class GameController extends StateNotifier<GameState> {
   }
 
   /// Starts a new game with [playerCount] and optional custom names/colors.
+  /// When [teamMode] is true (4 players), slots 0&2 form Team A and slots
+  /// 1&3 form Team B — partners sit opposite each other.
   void startNewGame({
     required int playerCount,
     List<String>? playerNames,
     List<LudoColor>? playerColors,
+    bool teamMode = false,
   }) {
     final count = playerCount.clamp(2, 4);
+    final teams = teamMode && count == 4;
     final colors = playerColors ??
         (count == 2
             ? [LudoColor.red, LudoColor.yellow] // Diagonally opposite for balanced 2-player
@@ -65,6 +69,7 @@ class GameController extends StateNotifier<GameState> {
             ? playerNames[i].trim()
             : 'Player ${i + 1}',
         color: colors[i],
+        teamId: teams ? ((i == 0 || i == 2) ? 0 : 1) : i,
       ),
     );
 
@@ -72,7 +77,10 @@ class GameController extends StateNotifier<GameState> {
       players: players,
       currentPlayerIndex: 0,
       phase: GamePhase.playing,
-      statusMessage: '${players[0].name}\'s turn. Tap the dice to roll!',
+      teamMode: teams,
+      statusMessage: teams
+          ? '${players[0].name} (${Player.teamName(0)}) starts! Tap the dice.'
+          : '${players[0].name}\'s turn. Tap the dice to roll!',
     );
   }
 
@@ -204,6 +212,11 @@ class GameController extends StateNotifier<GameState> {
       if (!BoardCoordinates.isSafeSquare(landingGlobalIndex)) {
         for (int p = 0; p < updatedPlayers.length; p++) {
           if (p == state.currentPlayerIndex) continue;
+          // Teammates are immune — partners stack safely (Team 2v2).
+          if (state.teamMode &&
+              updatedPlayers[p].teamId == player.teamId) {
+            continue;
+          }
           final opponent = updatedPlayers[p];
           final opponentTokens = List<Token>.from(opponent.tokens);
           bool opponentCaptured = false;
@@ -237,10 +250,30 @@ class GameController extends StateNotifier<GameState> {
       status = '🎉 ${player.name}\'s token reached Home!';
     }
 
-    // Check if player has finished all 4 tokens — FIRST finisher wins (§6).
+    // Winning: solo = first player with all 4 home; team = first team
+    // with all 8 home.
     final List<Player> newFinishOrder = List.from(state.finishOrder);
     bool justFinished = false;
-    if (updatedPlayer.tokens.every((t) => t.isHome) && updatedPlayer.finishRank == null) {
+    if (state.teamMode) {
+      final mates = updatedPlayers
+          .where((p) => p.teamId == player.teamId)
+          .toList();
+      if (mates.every((m) => m.tokens.every((t) => t.isHome))) {
+        for (final m in mates) {
+          final idx = updatedPlayers.indexWhere((p) => p.id == m.id);
+          final ranked = m.copyWith(finishRank: 1);
+          updatedPlayers[idx] = ranked;
+          newFinishOrder.add(ranked);
+        }
+        updatedPlayer = updatedPlayers[state.currentPlayerIndex];
+        justFinished = true;
+        status =
+            '🏆 ${Player.teamName(player.teamId)} wins the game!';
+      } else if (didReachHome) {
+        // Teammate progress note (extra turn already granted below).
+      }
+    } else if (updatedPlayer.tokens.every((t) => t.isHome) &&
+        updatedPlayer.finishRank == null) {
       const rank = 1;
       updatedPlayer = updatedPlayer.copyWith(finishRank: rank);
       updatedPlayers[state.currentPlayerIndex] = updatedPlayer;
@@ -260,7 +293,11 @@ class GameController extends StateNotifier<GameState> {
       finishOrder: newFinishOrder,
       phase: isOver ? GamePhase.finished : GamePhase.playing,
       totalCaptures: totalCaptures,
-      statusMessage: isOver ? '🏆 ${player.name} wins! All 4 tokens home.' : status,
+      statusMessage: isOver
+          ? (state.teamMode
+              ? '🏆 ${Player.teamName(player.teamId)} wins! All 8 tokens home.'
+              : '🏆 ${player.name} wins! All 4 tokens home.')
+          : status,
       clearDiceRoll: true,
       movableTokenIds: const [],
       lastMovedTokenSnapshot: tokenSnapshot,

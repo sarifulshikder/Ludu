@@ -13,22 +13,24 @@ import 'token_widget.dart';
 
 /// Edge-to-edge Aurora board.
 ///
-/// * Board dimension is width-bound with only ~6dp side margins so path
-///   cells stay big and readable from a distance.
-/// * Orbs are centered on their squares (no pin offsets).
+/// * Chunky orbs (~1.04× cell) with thick cell rules — readable from afar.
 /// * Shared squares use a neat 2×2 mini-grid — never messy overlap.
-/// * Hop animation moves square-by-square with sound + light haptics;
-///   capture shows a ⚔️ burst, home arrival a 🎉 burst.
+/// * Discrete hop animation: each step lands and settles before the next.
+///   The move commits to game state only after the visual lands, and all
+///   other inputs are locked out via [onAnimatingChanged] while hopping so
+///   a tap can never act on a stale position.
 class LudoBoard extends StatefulWidget {
   final GameState gameState;
   final Function(int tokenId) onTokenSelected;
   final VoidCallback? onRollDice;
+  final ValueChanged<bool>? onAnimatingChanged;
 
   const LudoBoard({
     super.key,
     required this.gameState,
     required this.onTokenSelected,
     this.onRollDice,
+    this.onAnimatingChanged,
   });
 
   @override
@@ -40,12 +42,16 @@ class _LudoBoardState extends State<LudoBoard>
   int? _animatingTokenKey;
   int? _animatingCurrentStep;
   Timer? _hopTimer;
+  int _hopGeneration = 0;
 
   String? _burstEmoji;
   late AnimationController _burstController;
   late Animation<double> _burstScale;
   int _lastCaptures = 0;
   final Map<String, int> _lastHomeCounts = {};
+
+  static const int _stepMs = 150;
+  static const int _settleMs = 160;
 
   @override
   void initState() {
@@ -74,11 +80,9 @@ class _LudoBoardState extends State<LudoBoard>
   void didUpdateWidget(covariant LudoBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.gameState.totalCaptures > _lastCaptures) {
-      _lastCaptures = widget.gameState.totalCaptures;
       _fireBurst('⚔️');
-    } else {
-      _lastCaptures = widget.gameState.totalCaptures;
     }
+    _lastCaptures = widget.gameState.totalCaptures;
     for (final p in widget.gameState.players) {
       final prev = _lastHomeCounts[p.color.name] ?? 0;
       if (p.tokensHomeCount > prev) {
@@ -95,6 +99,7 @@ class _LudoBoardState extends State<LudoBoard>
 
   @override
   void dispose() {
+    _hopGeneration++; // Invalidate any in-flight hop callbacks.
     _hopTimer?.cancel();
     _burstController.dispose();
     super.dispose();
@@ -102,37 +107,49 @@ class _LudoBoardState extends State<LudoBoard>
 
   int _tokenKey(LudoColor color, int id) => color.index * 10 + id;
 
+  void _setAnimating(bool v) {
+    widget.onAnimatingChanged?.call(v);
+  }
+
+  void _commitMove(int key, int tokenId) {
+    if (!mounted || _animatingTokenKey != key) return;
+    setState(() {
+      _animatingTokenKey = null;
+      _animatingCurrentStep = null;
+    });
+    _setAnimating(false);
+    widget.onTokenSelected(tokenId);
+  }
+
   void _startStepByStepMovement(Token token, int roll) {
+    if (_animatingTokenKey != null) return;
     final startStep = token.step;
     final int finalStep = (startStep == -1) ? 0 : startStep + roll;
     final key = _tokenKey(token.color, token.id);
+    final gen = ++_hopGeneration;
 
     setState(() {
       _animatingTokenKey = key;
       _animatingCurrentStep = startStep;
     });
+    _setAnimating(true);
 
     if (startStep == -1) {
       _hopTimer?.cancel();
       AudioService.playTokenOut();
       HapticsService.medium();
-      _hopTimer = Timer(const Duration(milliseconds: 260), () {
-        if (!mounted) return;
-        setState(() {
-          _animatingTokenKey = null;
-          _animatingCurrentStep = null;
-        });
-        widget.onTokenSelected(token.id);
+      _hopTimer = Timer(const Duration(milliseconds: 280), () {
+        if (gen != _hopGeneration) return;
+        _commitMove(key, token.id);
       });
       return;
     }
 
     int currentStep = startStep;
-    const int stepDurationMs = 110;
     _hopTimer?.cancel();
-    _hopTimer = Timer.periodic(const Duration(milliseconds: stepDurationMs),
-        (timer) {
-      if (!mounted) {
+    _hopTimer =
+        Timer.periodic(const Duration(milliseconds: _stepMs), (timer) {
+      if (!mounted || gen != _hopGeneration) {
         timer.cancel();
         return;
       }
@@ -142,13 +159,11 @@ class _LudoBoardState extends State<LudoBoard>
       if (currentStep >= finalStep) {
         timer.cancel();
         setState(() => _animatingCurrentStep = finalStep);
-        Future.delayed(const Duration(milliseconds: 130), () {
-          if (!mounted) return;
-          setState(() {
-            _animatingTokenKey = null;
-            _animatingCurrentStep = null;
-          });
-          widget.onTokenSelected(token.id);
+        // Let the orb visibly settle on its landing square before the
+        // state commit moves turn/dice forward.
+        Future.delayed(const Duration(milliseconds: _settleMs), () {
+          if (gen != _hopGeneration) return;
+          _commitMove(key, token.id);
         });
       } else {
         setState(() => _animatingCurrentStep = currentStep);
@@ -157,6 +172,7 @@ class _LudoBoardState extends State<LudoBoard>
   }
 
   void _handleBaseTap(LudoColor color) {
+    if (_animatingTokenKey != null) return;
     if (widget.gameState.canRollDice &&
         widget.gameState.currentPlayer.color == color) {
       widget.onRollDice?.call();
@@ -172,16 +188,17 @@ class _LudoBoardState extends State<LudoBoard>
         final double boardDimension =
             min(constraints.maxWidth, constraints.maxHeight);
         final double tileSize = boardDimension / 15.0;
-        // Big orbs: nearly fill their cell on track, sit inside wells in base.
-        final double trackTokenSize = tileSize * 0.98;
-        final double baseTokenSize = tileSize * 0.92;
+        // Chunky orbs spill slightly past their cell — the "big pieces"
+        // feel of physical Ludo sets.
+        final double trackTokenSize = tileSize * 1.04;
+        final double baseTokenSize = tileSize * 1.0;
 
         return Center(
           child: Container(
             width: boardDimension,
             height: boardDimension,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(tileSize * 0.55),
+              borderRadius: BorderRadius.circular(tileSize * 0.45),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(isDark ? 0.55 : 0.30),
@@ -208,7 +225,8 @@ class _LudoBoardState extends State<LudoBoard>
                     ),
                   ),
                 ),
-                if (widget.gameState.canRollDice) ...[
+                if (widget.gameState.canRollDice &&
+                    _animatingTokenKey == null) ...[
                   _baseTap(LudoColor.red, tileSize, left: 0, top: 0),
                   _baseTap(LudoColor.green, tileSize, right: 0, top: 0),
                   _baseTap(LudoColor.yellow, tileSize, right: 0, bottom: 0),
@@ -279,8 +297,8 @@ class _LudoBoardState extends State<LudoBoard>
       if (player == null) return;
       final isTurn =
           widget.gameState.currentPlayer.color == color;
-      final w = tileSize * 3.4;
-      final h = tileSize * 0.72;
+      final w = tileSize * 3.6;
+      final h = tileSize * 0.78;
       widgets.add(
         Positioned(
           left: cx * tileSize - w / 2,
@@ -290,7 +308,7 @@ class _LudoBoardState extends State<LudoBoard>
           child: Center(
             child: Container(
               padding: EdgeInsets.symmetric(
-                  horizontal: tileSize * 0.22, vertical: tileSize * 0.06),
+                  horizontal: tileSize * 0.24, vertical: tileSize * 0.07),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(isTurn ? 0.55 : 0.38),
                 borderRadius: BorderRadius.circular(tileSize * 0.2),
@@ -306,7 +324,7 @@ class _LudoBoardState extends State<LudoBoard>
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: tileSize * 0.36,
+                  fontSize: tileSize * 0.38,
                   fontWeight: FontWeight.w900,
                   height: 1.0,
                   shadows: const [
@@ -376,29 +394,29 @@ class _LudoBoardState extends State<LudoBoard>
 
         final double baseSize =
             token.isInBase ? baseTokenSize : trackTokenSize;
-        // Neat mini-grid when sharing: no messy overlap.
+        // Neat mini-grid when sharing: big, no messy overlap.
         double displaySize = baseSize;
         Offset offset = Offset.zero;
         if (count > 1 && token.step != -1) {
           if (count == 2) {
-            displaySize = baseSize * 0.62;
-            offset = Offset((i == 0 ? -1 : 1) * tileSize * 0.20, 0);
+            displaySize = baseSize * 0.66;
+            offset = Offset((i == 0 ? -1 : 1) * tileSize * 0.22, 0);
           } else {
-            displaySize = baseSize * 0.55;
+            displaySize = baseSize * 0.60;
             const dx = [-1, 1, -1, 1];
             const dy = [-1, -1, 1, 1];
             final k = i % 4;
             offset = Offset(
-                dx[k] * tileSize * 0.20, dy[k] * tileSize * 0.20);
+                dx[k] * tileSize * 0.22, dy[k] * tileSize * 0.22);
           }
         }
         // Home medallion: 4 mini orbs in a diamond.
         if (token.step >= 56) {
-          displaySize = baseSize * 0.52;
+          displaySize = baseSize * 0.56;
           const dx = [0, -1, 1, 0];
           const dy = [-1, 0, 0, 1];
           final k = token.id % 4;
-          offset = Offset(dx[k] * tileSize * 0.32, dy[k] * tileSize * 0.32);
+          offset = Offset(dx[k] * tileSize * 0.34, dy[k] * tileSize * 0.34);
         }
 
         final targetLeft =
@@ -410,7 +428,7 @@ class _LudoBoardState extends State<LudoBoard>
           AnimatedPositioned(
             key: ValueKey('token_${token.color.name}_${token.id}'),
             duration: isAnimating
-                ? const Duration(milliseconds: 95)
+                ? const Duration(milliseconds: 80)
                 : const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             left: targetLeft,

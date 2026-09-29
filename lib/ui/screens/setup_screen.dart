@@ -8,6 +8,7 @@ class SetupScreen extends StatefulWidget {
     required int playerCount,
     required List<String> playerNames,
     required List<LudoColor> playerColors,
+    bool teamMode,
   }) onStartGame;
   final VoidCallback onToggleTheme;
   final bool isDark;
@@ -34,6 +35,7 @@ class _SetupScreenState extends State<SetupScreen> {
   ];
   bool _soundOn = !AudioService.isMuted;
   bool _vibrationOn = HapticsService.isEnabled;
+  bool _teamMode = false;
 
   final List<LudoColor> _allColors = [
     LudoColor.red,
@@ -60,10 +62,148 @@ class _SetupScreenState extends State<SetupScreen> {
     });
   }
 
+  Widget _modeCard(String title, String subtitle, bool team) {
+    final selected = _teamMode == team;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          HapticsService.selection();
+          setState(() => _teamMode = team);
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? const Color(0xFFE9C46A)
+                : (widget.isDark ? const Color(0xFF141D2E) : Colors.white),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFFE9C46A)
+                  : (widget.isDark
+                      ? const Color(0xFF283650)
+                      : const Color(0xFFD6CEBD)),
+              width: selected ? 2.0 : 1.0,
+            ),
+          ),
+          child: Column(
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: selected
+                      ? const Color(0xFF1A202C)
+                      : (widget.isDark ? Colors.white : const Color(0xFF1A202C)),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: selected
+                      ? const Color(0xFF1A202C)
+                      : (widget.isDark ? Colors.white70 : const Color(0xFF64748B)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Shows the two partner pairs. Partners always sit opposite:
+  /// seats 1&3 vs seats 2&4.
+  Widget _teamPreview(List<LudoColor> activeColors) {
+    Widget teamRow(String label, LudoColor a, LudoColor b) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE9C46A).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFFE9C46A),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _miniOrb(a),
+            const SizedBox(width: 6),
+            const Text('+', style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(width: 6),
+            _miniOrb(b),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isDark
+              ? const Color(0xFF283650)
+              : const Color(0xFFD6CEBD),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          teamRow('Team A', activeColors[0], activeColors[2]),
+          teamRow('Team B', activeColors[1], activeColors[3]),
+          const Text(
+            'Teammates can stack together and never capture each other.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniOrb(LudoColor c) {
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: c.jewelGradient,
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: Center(
+        child: Text(
+          c.emblemGlyph,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _setPlayerCount(int count) {
     HapticsService.selection();
     setState(() {
       _playerCount = count;
+      if (count != 4) _teamMode = false;
       // Ensure active colors stay unique.
       final seen = <LudoColor>{};
       for (int i = 0; i < _playerCount; i++) {
@@ -311,6 +451,30 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               const SizedBox(height: 24),
 
+              // Game mode: Solo or Team 2v2 (4 players only).
+              if (_playerCount == 4) ...[
+                const Text(
+                  'GAME MODE',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                    color: Color(0xFFE9C46A),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _modeCard('Solo', 'Everyone for themselves', false),
+                    const SizedBox(width: 10),
+                    _modeCard('Team 2v2', 'Partners opposite • 8 home wins', true),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (_teamMode) _teamPreview(activeColors),
+                const SizedBox(height: 24),
+              ],
+
               // Player Name Inputs & Colors
               const Text(
                 'PLAYERS & SEATS',
@@ -550,6 +714,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     playerCount: _playerCount,
                     playerNames: names,
                     playerColors: activeColors,
+                    teamMode: _teamMode && _playerCount == 4,
                   );
                 },
                 style: ElevatedButton.styleFrom(

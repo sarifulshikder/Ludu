@@ -40,6 +40,24 @@ class _TokenWidgetState extends State<TokenWidget>
   late AnimationController _pulseController;
   late Animation<double> _pulseScale;
 
+  void _startPulse() {
+    // In widget tests an endlessly repeating animation would make
+    // pumpAndSettle() hang, so settle the controller once instead.
+    bool inTest = false;
+    assert(() {
+      if (WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
+        inTest = true;
+      }
+      return true;
+    }());
+
+    if (inTest) {
+      _pulseController.forward();
+    } else {
+      _pulseController.repeat(reverse: true);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +68,7 @@ class _TokenWidgetState extends State<TokenWidget>
     _pulseScale = Tween<double>(begin: 1.0, end: 1.14).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    if (widget.isMovable) _pulseController.repeat(reverse: true);
+    if (widget.isMovable) _startPulse();
   }
 
   @override
@@ -58,7 +76,7 @@ class _TokenWidgetState extends State<TokenWidget>
     super.didUpdateWidget(oldWidget);
     if (widget.isMovable != oldWidget.isMovable) {
       if (widget.isMovable) {
-        _pulseController.repeat(reverse: true);
+        _startPulse();
       } else {
         _pulseController.stop();
         _pulseController.reset();

@@ -81,11 +81,13 @@ class _LuduMainNavigatorState extends ConsumerState<LuduMainNavigator> {
     required int playerCount,
     required List<String> playerNames,
     required List<LudoColor> playerColors,
+    bool teamMode = false,
   }) {
     ref.read(gameControllerProvider.notifier).startNewGame(
           playerCount: playerCount,
           playerNames: playerNames,
           playerColors: playerColors,
+          teamMode: teamMode,
         );
 
     setState(() {

@@ -21,6 +21,9 @@ class GameState {
   final int totalTurns;
   final int totalSixes;
   final int totalCaptures;
+  /// When true, 4-player Team 2v2 rules apply: teammates can't capture each
+  /// other and the first team with all 8 tokens home wins.
+  final bool teamMode;
 
   // Snapshot to allow undoing third 6 if needed
   final Token? lastMovedTokenSnapshot;
@@ -41,6 +44,7 @@ class GameState {
     this.totalTurns = 0,
     this.totalSixes = 0,
     this.totalCaptures = 0,
+    this.teamMode = false,
     this.lastMovedTokenSnapshot,
     this.lastMovedPlayerIndex,
     this.lastCapturedTokensSnapshot,
@@ -78,6 +82,7 @@ class GameState {
     int? totalTurns,
     int? totalSixes,
     int? totalCaptures,
+    bool? teamMode,
     Token? lastMovedTokenSnapshot,
     bool clearSnapshot = false,
     int? lastMovedPlayerIndex,
@@ -97,6 +102,7 @@ class GameState {
       totalTurns: totalTurns ?? this.totalTurns,
       totalSixes: totalSixes ?? this.totalSixes,
       totalCaptures: totalCaptures ?? this.totalCaptures,
+      teamMode: teamMode ?? this.teamMode,
       lastMovedTokenSnapshot: clearSnapshot ? null : (lastMovedTokenSnapshot ?? this.lastMovedTokenSnapshot),
       lastMovedPlayerIndex: clearSnapshot ? null : (lastMovedPlayerIndex ?? this.lastMovedPlayerIndex),
       lastCapturedTokensSnapshot: clearSnapshot ? null : (lastCapturedTokensSnapshot ?? this.lastCapturedTokensSnapshot),

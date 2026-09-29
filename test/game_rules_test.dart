@@ -283,5 +283,81 @@ void main() {
       expect(controller.state.phase, equals(GamePhase.playing));
       expect(controller.state.currentPlayerIndex, equals(0));
     });
+
+    test('Team 2v2 assigns opposite seats as partners', () {
+      final controller = GameController();
+      controller.startNewGame(playerCount: 4, teamMode: true);
+
+      expect(controller.state.teamMode, isTrue);
+      final teams =
+          controller.state.players.map((p) => p.teamId).toList();
+      expect(teams, equals([0, 1, 0, 1]));
+    });
+
+    test('Teammates cannot capture each other (stack safely)', () {
+      final controller = GameController(diceService: ScriptedDiceService([3]));
+      controller.startNewGame(playerCount: 4, teamMode: true);
+
+      // Player 0 (red, team A) token at step 1 -> moves to step 4 (global 4).
+      // Player 2 (yellow, team A) token parked on global 4 ((26+30)%52).
+      final p0 = controller.state.players[0];
+      final p2 = controller.state.players[2];
+      final p0Tokens = List<Token>.from(p0.tokens);
+      p0Tokens[0] = p0Tokens[0].copyWith(step: 1);
+      final p2Tokens = List<Token>.from(p2.tokens);
+      p2Tokens[0] = p2Tokens[0].copyWith(step: 30);
+
+      controller.state = controller.state.copyWith(
+        players: [
+          p0.copyWith(tokens: p0Tokens),
+          controller.state.players[1],
+          p2.copyWith(tokens: p2Tokens),
+          controller.state.players[3],
+        ],
+        currentPlayerIndex: 0,
+      );
+
+      controller.rollDice(); // 3
+      controller.moveToken(0);
+
+      expect(controller.state.players[0].tokens[0].step, equals(4));
+      // Partner untouched.
+      expect(controller.state.players[2].tokens[0].step, equals(30));
+      expect(controller.state.totalCaptures, equals(0));
+    });
+
+    test('Team wins when all 8 partner tokens are home', () {
+      final controller = GameController(diceService: ScriptedDiceService([2]));
+      controller.startNewGame(playerCount: 4, teamMode: true);
+
+      // Team A: player 0 fully home, player 2 has 3 home + 1 at step 54.
+      final p0 = controller.state.players[0];
+      final p2 = controller.state.players[2];
+      final p0Tokens =
+          List.generate(4, (i) => Token(id: i, color: p0.color, step: 56));
+      final p2Tokens =
+          List.generate(4, (i) => Token(id: i, color: p2.color, step: 56));
+      p2Tokens[3] = p2Tokens[3].copyWith(step: 54);
+
+      controller.state = controller.state.copyWith(
+        players: [
+          p0.copyWith(tokens: p0Tokens),
+          controller.state.players[1],
+          p2.copyWith(tokens: p2Tokens),
+          controller.state.players[3],
+        ],
+        currentPlayerIndex: 2,
+      );
+
+      controller.rollDice(); // 2, exact finish for token 3
+      controller.moveToken(3);
+
+      expect(controller.state.phase, equals(GamePhase.finished));
+      expect(controller.state.finishOrder.length, equals(2));
+      expect(
+        controller.state.finishOrder.map((p) => p.teamId).toSet(),
+        equals({0}),
+      );
+    });
   });
 }

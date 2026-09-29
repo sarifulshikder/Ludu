@@ -222,8 +222,8 @@ class BoardPainter extends CustomPainter {
   void _drawTrackCells(Canvas canvas, double tile) {
     for (final pt in BoardCoordinates.outerTrack) {
       final rect = Rect.fromLTWH(
-        pt.col * tile + 1.0, pt.row * tile + 1.0, tile - 2.0, tile - 2.0);
-      final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tile * 0.16));
+        pt.col * tile + 0.8, pt.row * tile + 0.8, tile - 1.6, tile - 1.6);
+      final rrect = RRect.fromRectAndRadius(rect, Radius.circular(tile * 0.14));
       // Pearl gradient + top highlight line for a tactile feel.
       canvas.drawRRect(
         rrect,
@@ -247,7 +247,7 @@ class BoardPainter extends CustomPainter {
         Paint()
           ..color = _trackRule
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
+          ..strokeWidth = 1.8,
       );
     }
   }

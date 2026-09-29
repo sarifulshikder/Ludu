@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
+import '../../models/player.dart';
 import '../../services/haptics_service.dart';
 import '../widgets/confetti_overlay.dart';
 
@@ -34,6 +35,12 @@ class _VictoryScreenState extends State<VictoryScreen> {
     final winner = finishOrder.isNotEmpty
         ? finishOrder.first
         : widget.gameState.players.first;
+    final isTeamWin = widget.gameState.teamMode;
+    final teamMates = isTeamWin
+        ? widget.gameState.players
+            .where((p) => p.teamId == winner.teamId)
+            .toList()
+        : [winner];
 
     return ConfettiOverlay(
       isPlaying: true,
@@ -54,38 +61,46 @@ class _VictoryScreenState extends State<VictoryScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // Winner hero orb.
-                Container(
-                  width: 92,
-                  height: 92,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: winner.color.jewelGradient,
-                    border:
-                        Border.all(color: Colors.white, width: 3),
-                    boxShadow: [
-                      BoxShadow(
-                        color: winner.color.primary.withOpacity(0.55),
-                        blurRadius: 24,
-                        spreadRadius: 3,
+                // Winner hero: both partner orbs for a team win.
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: teamMates.map((m) {
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      width: isTeamWin ? 76 : 92,
+                      height: isTeamWin ? 76 : 92,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: m.color.jewelGradient,
+                        border:
+                            Border.all(color: Colors.white, width: 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: m.color.primary.withOpacity(0.55),
+                            blurRadius: 24,
+                            spreadRadius: 3,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      winner.color.emblemGlyph,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w900,
-                        height: 1.0,
+                      child: Center(
+                        child: Text(
+                          m.color.emblemGlyph,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isTeamWin ? 34 : 40,
+                            fontWeight: FontWeight.w900,
+                            height: 1.0,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  }).toList(),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '${winner.name} wins!',
+                  isTeamWin
+                      ? '${Player.teamName(winner.teamId)} wins!'
+                      : '${winner.name} wins!',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 30,
@@ -94,7 +109,10 @@ class _VictoryScreenState extends State<VictoryScreen> {
                   ),
                 ),
                 Text(
-                  '${winner.color.displayName} ${winner.color.emblemGlyph} • 4/4 home',
+                  isTeamWin
+                      ? '${teamMates.map((m) => '${m.color.emblemGlyph} ${m.name}').join('  +  ')} • 8/8 home'
+                      : '${winner.color.displayName} ${winner.color.emblemGlyph} • 4/4 home',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
