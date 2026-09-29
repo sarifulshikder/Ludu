@@ -206,44 +206,83 @@ void main() {
       expect(controller.state.currentPlayerIndex, equals(1));
     });
 
-    test('Game produces complete finish-order ranking for all players', () {
-      final controller = GameController();
+    test('First player to bring all 4 home wins immediately (§6)', () {
+      final controller = GameController(
+          diceService: ScriptedDiceService([2]));
       controller.startNewGame(playerCount: 3);
 
-      // Simulate players finishing one by one
-      final p0Finished = controller.state.players[0].copyWith(
-        tokens: List.generate(4, (i) => Token(id: i, color: LudoColor.red, step: 56)),
-      );
-      final p1Finished = controller.state.players[1].copyWith(
-        tokens: List.generate(4, (i) => Token(id: i, color: LudoColor.green, step: 56)),
-      );
-
-      // Player 0 finishes 1st
-      controller.state = controller.state.copyWith(
-        players: [p0Finished, controller.state.players[1], controller.state.players[2]],
-        finishOrder: [p0Finished.copyWith(finishRank: 1)],
-      );
-
-      // Player 1 finishes 2nd -> only Player 2 remains, so Player 2 automatically gets 3rd
+      // Player 0 has 3 home + 1 at step 54 (needs exact 2).
+      final p0 = controller.state.players[0];
+      final p0Tokens = List<Token>.from(p0.tokens);
+      for (int i = 0; i < 3; i++) {
+        p0Tokens[i] = p0Tokens[i].copyWith(step: 56);
+      }
+      p0Tokens[3] = p0Tokens[3].copyWith(step: 54);
       controller.state = controller.state.copyWith(
         players: [
-          p0Finished.copyWith(finishRank: 1),
-          p1Finished,
-          controller.state.players[2],
+          p0.copyWith(tokens: p0Tokens),
+          controller.state.players[1],
+          controller.state.players[2]
         ],
-        currentPlayerIndex: 1,
-        currentDiceRoll: 1,
-        movableTokenIds: [0],
+        currentPlayerIndex: 0,
       );
 
-      // Trigger move on player 1 to finish
+      controller.rollDice(); // rolls 2
+      expect(controller.state.movableTokenIds.contains(3), isTrue);
+      controller.moveToken(3);
+
+      expect(controller.state.players[0].tokens.every((t) => t.isHome),
+          isTrue);
+      expect(controller.state.phase, equals(GamePhase.finished));
+      expect(controller.state.finishOrder.length, equals(1));
+      expect(controller.state.finishOrder.first.name,
+          equals(controller.state.players[0].name));
+    });
+
+    test('Capture grants an extra turn even without a 6 (§4)', () {
+      final controller = GameController(diceService: ScriptedDiceService([3]));
+      controller.startNewGame(playerCount: 2);
+
+      final p0 = controller.state.players[0];
+      final p1 = controller.state.players[1];
+      final p0Tokens = List<Token>.from(p0.tokens);
+      p0Tokens[0] = p0Tokens[0].copyWith(step: 1);
+      final p1Tokens = List<Token>.from(p1.tokens);
+      p1Tokens[0] = p1Tokens[0].copyWith(step: 30); // global 4
+
+      controller.state = controller.state.copyWith(
+        players: [p0.copyWith(tokens: p0Tokens), p1.copyWith(tokens: p1Tokens)],
+        currentPlayerIndex: 0,
+      );
+
+      controller.rollDice(); // 3
       controller.moveToken(0);
 
-      expect(controller.state.phase, equals(GamePhase.finished));
-      expect(controller.state.finishOrder.length, equals(3));
-      expect(controller.state.finishOrder[0].finishRank, equals(1));
-      expect(controller.state.finishOrder[1].finishRank, equals(2));
-      expect(controller.state.finishOrder[2].finishRank, equals(3));
+      expect(controller.state.players[1].tokens[0].step, equals(-1));
+      // Extra turn: still player 0.
+      expect(controller.state.currentPlayerIndex, equals(0));
+      expect(controller.state.currentDiceRoll, isNull);
+    });
+
+    test('Reaching home grants an extra turn even without a 6 (§4)', () {
+      final controller = GameController(diceService: ScriptedDiceService([2]));
+      controller.startNewGame(playerCount: 2);
+
+      final p0 = controller.state.players[0];
+      final p0Tokens = List<Token>.from(p0.tokens);
+      p0Tokens[0] = p0Tokens[0].copyWith(step: 54);
+      p0Tokens[1] = p0Tokens[1].copyWith(step: 10);
+      controller.state = controller.state.copyWith(
+        players: [p0.copyWith(tokens: p0Tokens), controller.state.players[1]],
+        currentPlayerIndex: 0,
+      );
+
+      controller.rollDice(); // 2
+      controller.moveToken(0);
+
+      expect(controller.state.players[0].tokens[0].step, equals(56));
+      expect(controller.state.phase, equals(GamePhase.playing));
+      expect(controller.state.currentPlayerIndex, equals(0));
     });
   });
 }

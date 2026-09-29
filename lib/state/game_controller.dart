@@ -6,6 +6,7 @@ import '../models/player.dart';
 import '../models/token.dart';
 import '../services/audio_service.dart';
 import '../services/dice_service.dart';
+import '../services/haptics_service.dart';
 
 final diceServiceProvider = Provider<DiceService>((ref) => DiceService());
 
@@ -193,6 +194,7 @@ class GameController extends StateNotifier<GameState> {
 
     int totalCaptures = state.totalCaptures;
     String status = '${player.name} moved token ${token.id + 1}.';
+    bool didCapture = false;
 
     // Check for captures if landing on outer track (0..50)
     if (newStep >= 0 && newStep <= 50) {
@@ -218,45 +220,39 @@ class GameController extends StateNotifier<GameState> {
 
           if (opponentCaptured) {
             AudioService.playCapture();
+            HapticsService.capture();
             updatedPlayers[p] = opponent.copyWith(tokens: opponentTokens);
             status = '⚔️ ${player.name} captured ${opponent.name}\'s token!';
+            didCapture = true;
           }
         }
       }
     }
 
-    // Check if token reached Home
-    if (newStep == 56) {
+    // Check if token reached Home (center, step 56) — exact roll already enforced.
+    final bool didReachHome = newStep == 56;
+    if (didReachHome) {
       AudioService.playSafe();
+      HapticsService.victory();
       status = '🎉 ${player.name}\'s token reached Home!';
     }
 
-    // Check if player has finished all 4 tokens
+    // Check if player has finished all 4 tokens — FIRST finisher wins (§6).
     final List<Player> newFinishOrder = List.from(state.finishOrder);
     bool justFinished = false;
     if (updatedPlayer.tokens.every((t) => t.isHome) && updatedPlayer.finishRank == null) {
-      final rank = newFinishOrder.length + 1;
+      const rank = 1;
       updatedPlayer = updatedPlayer.copyWith(finishRank: rank);
       updatedPlayers[state.currentPlayerIndex] = updatedPlayer;
       newFinishOrder.add(updatedPlayer);
       justFinished = true;
-      status = '🏆 ${player.name} finished in Rank #$rank!';
+      status = '🏆 ${player.name} wins the game!';
     }
 
-    // Check if game is over (all players finished or only 1 remaining active)
-    final remainingActive = updatedPlayers.where((p) => p.finishRank == null).toList();
-    bool isOver = false;
-    if (remainingActive.length <= 1) {
-      isOver = true;
+    final bool isOver = justFinished;
+    if (isOver) {
       AudioService.playVictory();
-      if (remainingActive.length == 1) {
-        final lastPlayer = remainingActive.first;
-        final lastRank = newFinishOrder.length + 1;
-        final rankedLast = lastPlayer.copyWith(finishRank: lastRank);
-        final idx = updatedPlayers.indexWhere((p) => p.id == lastPlayer.id);
-        updatedPlayers[idx] = rankedLast;
-        newFinishOrder.add(rankedLast);
-      }
+      HapticsService.victory();
     }
 
     state = state.copyWith(
@@ -264,7 +260,7 @@ class GameController extends StateNotifier<GameState> {
       finishOrder: newFinishOrder,
       phase: isOver ? GamePhase.finished : GamePhase.playing,
       totalCaptures: totalCaptures,
-      statusMessage: isOver ? 'Game Finished! View final rankings.' : status,
+      statusMessage: isOver ? '🏆 ${player.name} wins! All 4 tokens home.' : status,
       clearDiceRoll: true,
       movableTokenIds: const [],
       lastMovedTokenSnapshot: tokenSnapshot,
@@ -274,11 +270,23 @@ class GameController extends StateNotifier<GameState> {
 
     if (isOver) return;
 
-    // Turn continuation rules:
-    // Rolling a 6 grants an extra turn, UNLESS the player just finished all tokens
-    if (roll == 6 && !justFinished) {
+    // Turn continuation rules (§4): extra roll when —
+    //  • roll is 6, OR
+    //  • an opponent token was captured, OR
+    //  • a token reached home (center).
+    // consecutiveSixes chain is preserved across the extra turn; it is only
+    // reset when the turn passes (see advanceToNextPlayer) or a non-6 is rolled
+    // (see rollDice which recomputes the counter).
+    final bool earnedExtraTurn =
+        (roll == 6 || didCapture || didReachHome);
+    if (earnedExtraTurn) {
+      final reason = roll == 6
+          ? 'Rolled a 6! Roll again.'
+          : didCapture
+              ? 'Capture bonus! Roll again.'
+              : 'Home bonus! Roll again.';
       state = state.copyWith(
-        statusMessage: '$status Rolled a 6! Roll again.',
+        statusMessage: '$status $reason',
       );
     } else {
       // Advance to next active player

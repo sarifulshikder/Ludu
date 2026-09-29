@@ -8,6 +8,7 @@ import '../../services/haptics_service.dart';
 import '../../state/game_controller.dart';
 import '../board/board_backdrop.dart';
 import '../board/ludo_board.dart';
+import '../widgets/dice_widget.dart';
 import '../widgets/player_box_widget.dart';
 import 'victory_screen.dart';
 
@@ -29,15 +30,16 @@ class GameScreen extends ConsumerStatefulWidget {
 
 class _GameScreenState extends ConsumerState<GameScreen> {
   bool _isMuted = AudioService.isMuted;
+  bool _vibrationOn = HapticsService.isEnabled;
 
-  // Layout constants for the adaptive, edge-to-edge play area.
-  static const double _topBarHeight = 48.0;
-  static const double _statusHeight = 50.0;
-  static const double _gap = 7.0;
-  static const double _arrowSlot = 34.0;
-  static const double _boardMargin = 14.0;
-  static const double _minCardHeight = 96.0;
-  static const double _maxCardHeight = 124.0;
+  // Big-board layout: minimal margins so the 15×15 grid fills ~98% width.
+  static const double _topBarHeight = 44.0;
+  static const double _statusHeight = 52.0;
+  static const double _gap = 6.0;
+  static const double _arrowSlot = 30.0;
+  static const double _boardMargin = 6.0;
+  static const double _minCardHeight = 88.0;
+  static const double _maxCardHeight = 112.0;
 
   void _toggleMute() {
     HapticsService.light();
@@ -45,6 +47,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       AudioService.toggleMute();
       _isMuted = AudioService.isMuted;
     });
+  }
+
+  void _toggleVibration() {
+    setState(() {
+      _vibrationOn = !_vibrationOn;
+      HapticsService.setEnabled(_vibrationOn);
+    });
+    HapticsService.light();
   }
 
   void _confirmRestart() {
@@ -211,15 +221,31 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   ),
                   const SizedBox(height: _gap),
 
-                  // The board floats on the backdrop with a margin, as in the
-                  // reference games.
+                  // Big board: fills almost the full width with minimal
+                  // margins; grand dice floats near the active corner.
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: _boardMargin),
-                      child: LudoBoard(
-                        gameState: gameState,
-                        onTokenSelected: (tokenId) => controller.moveToken(tokenId),
-                        onRollDice: () => controller.rollDice(),
+                      child: LayoutBuilder(
+                        builder: (context, boardConstraints) {
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Positioned.fill(
+                                child: LudoBoard(
+                                  gameState: gameState,
+                                  onTokenSelected: (tokenId) =>
+                                      controller.moveToken(tokenId),
+                                  onRollDice: () => controller.rollDice(),
+                                ),
+                              ),
+                              // Grand dice docked near the current player's
+                              // corner so up to 4 players can reach it.
+                              _buildCornerDice(
+                                  gameState, controller, activeColor),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -385,6 +411,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
           const SizedBox(width: 6),
           roundButton(
+            _vibrationOn ? Icons.vibration_rounded : Icons.mobile_off_rounded,
+            _vibrationOn ? 'Disable Vibration' : 'Enable Vibration',
+            _toggleVibration,
+          ),
+          const SizedBox(width: 6),
+          roundButton(
             widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
             'Toggle Theme',
             widget.onToggleTheme,
@@ -392,6 +424,65 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           const SizedBox(width: 6),
           roundButton(Icons.refresh_rounded, 'Restart Match', _confirmRestart),
         ],
+      ),
+    );
+  }
+
+  /// Grand 84dp dice floating near the active player's corner of the board.
+  /// Red = top-left, Green = top-right, Yellow = bottom-right,
+  /// Blue = bottom-left. Large tap area prevents mis-taps in pass-and-play.
+  Widget _buildCornerDice(
+    GameState gameState,
+    GameController controller,
+    LudoColor activeColor,
+  ) {
+    double? left;
+    double? top;
+    double? right;
+    double? bottom;
+    switch (activeColor) {
+      case LudoColor.red:
+        left = 2;
+        top = 2;
+        break;
+      case LudoColor.green:
+        right = 2;
+        top = 2;
+        break;
+      case LudoColor.yellow:
+        right = 2;
+        bottom = 2;
+        break;
+      case LudoColor.blue:
+        left = 2;
+        bottom = 2;
+        break;
+    }
+    // Show the live roll if present, else the player's id-based idle face.
+    final idleFace =
+        (gameState.currentPlayerIndex + 1).clamp(1, 6);
+    // Corner dice doubles as a big "confirm single move" button so
+    // mis-taps are impossible: one large target near your own base.
+    final bool singleMovable = gameState.mustSelectToken &&
+        gameState.movableTokenIds.length == 1;
+    return Positioned(
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+      child: DiceWidget(
+        value: gameState.currentDiceRoll ?? idleFace,
+        isRolling: gameState.isRolling,
+        canRoll: gameState.canRollDice || singleMovable,
+        activeColor: activeColor,
+        size: 84,
+        onRoll: () {
+          if (gameState.canRollDice) {
+            controller.rollDice();
+          } else if (singleMovable) {
+            controller.moveToken(gameState.movableTokenIds.first);
+          }
+        },
       ),
     );
   }
@@ -405,12 +496,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final mustSelectToken = gameState.mustSelectToken;
 
     final String bannerText;
+    final me = gameState.currentPlayer;
+    final prefix = '${me.color.emblemGlyph} ${me.name} — ';
     if (canRoll) {
-      bannerText = 'TAP DICE TO ROLL';
+      bannerText = '$prefix TAP DICE TO ROLL';
     } else if (mustSelectToken) {
       bannerText = gameState.movableTokenIds.length == 1
-          ? 'SELECT TOKEN TO MOVE (or tap dice)'
-          : 'SELECT TOKEN TO MOVE';
+          ? '$prefix TAP YOUR GLOWING TOKEN'
+          : '$prefix SELECT A GLOWING TOKEN';
     } else {
       bannerText = gameState.statusMessage;
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/ludo_color.dart';
+import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -25,6 +26,14 @@ class SetupScreen extends StatefulWidget {
 class _SetupScreenState extends State<SetupScreen> {
   int _playerCount = 4;
   late List<TextEditingController> _nameControllers;
+  List<LudoColor> _selectedColors = [
+    LudoColor.red,
+    LudoColor.green,
+    LudoColor.yellow,
+    LudoColor.blue,
+  ];
+  bool _soundOn = !AudioService.isMuted;
+  bool _vibrationOn = HapticsService.isEnabled;
 
   final List<LudoColor> _allColors = [
     LudoColor.red,
@@ -32,6 +41,45 @@ class _SetupScreenState extends State<SetupScreen> {
     LudoColor.yellow,
     LudoColor.blue,
   ];
+
+  List<LudoColor> get _activeColors =>
+      _selectedColors.sublist(0, _playerCount);
+
+  void _pickColor(int playerIndex, LudoColor color) {
+    HapticsService.selection();
+    setState(() {
+      final existing = _selectedColors.indexOf(color);
+      if (existing != -1 && existing < _playerCount) {
+        // Swap so colors stay unique.
+        final tmp = _selectedColors[playerIndex];
+        _selectedColors[playerIndex] = color;
+        _selectedColors[existing] = tmp;
+      } else {
+        _selectedColors[playerIndex] = color;
+      }
+    });
+  }
+
+  void _setPlayerCount(int count) {
+    HapticsService.selection();
+    setState(() {
+      _playerCount = count;
+      // Ensure active colors stay unique.
+      final seen = <LudoColor>{};
+      for (int i = 0; i < _playerCount; i++) {
+        if (seen.contains(_selectedColors[i])) {
+          _selectedColors[i] =
+              _allColors.firstWhere((c) => !seen.contains(c));
+        }
+        seen.add(_selectedColors[i]);
+      }
+      if (count == 2) {
+        // Default to opposite seats for balance if user hasn't customized.
+        _selectedColors[0] = LudoColor.red;
+        _selectedColors[1] = LudoColor.yellow;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -82,23 +130,27 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 _RuleItem(
                   title: 'Exit Base',
-                  desc: 'Roll a 6 to bring a token out of base and grant an extra turn.',
+                  desc: 'Roll a 6 to bring a token out of base.',
+                ),
+                _RuleItem(
+                  title: 'Extra Turn',
+                  desc: 'Roll again when you roll a 6, capture an opponent, or bring a token home.',
                 ),
                 _RuleItem(
                   title: 'Captures & Safe Stars',
-                  desc: 'Landing on an opponent sends them back to base. Tokens on the 8 star/entry squares are safe from capture.',
+                  desc: 'Landing on an opponent sends them back to base. Star squares and each color start square are safe.',
                 ),
                 _RuleItem(
                   title: 'Three 6s Rule',
-                  desc: 'Rolling three 6s in a row within the same turn forfeits the turn and passes it immediately to the next player.',
+                  desc: 'Three consecutive 6s cancels the third roll and passes the turn.',
                 ),
                 _RuleItem(
                   title: 'Exact Roll to Finish',
-                  desc: 'Tokens require an exact roll to land on Home. No overshoots allowed.',
+                  desc: 'Tokens need the exact number to enter the center. Overshoots cannot move.',
                 ),
                 _RuleItem(
-                  title: 'Complete Ranking',
-                  desc: 'Game continues until all players complete their tokens, determining 1st through last place.',
+                  title: 'Winning',
+                  desc: 'First player to bring all 4 tokens home wins.',
                 ),
               ],
             ),
@@ -123,10 +175,7 @@ class _SetupScreenState extends State<SetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Default colors based on player count
-    final List<LudoColor> activeColors = (_playerCount == 2)
-        ? [LudoColor.red, LudoColor.yellow]
-        : _allColors.sublist(0, _playerCount);
+    final List<LudoColor> activeColors = _activeColors;
 
     return Scaffold(
       appBar: AppBar(
@@ -226,12 +275,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4.0),
                       child: InkWell(
-                        onTap: () {
-                          HapticsService.selection();
-                          setState(() {
-                            _playerCount = count;
-                          });
-                        },
+                        onTap: () => _setPlayerCount(count),
                         borderRadius: BorderRadius.circular(14),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -287,52 +331,205 @@ class _SetupScreenState extends State<SetupScreen> {
                 itemBuilder: (context, index) {
                   final color = activeColors[index];
                   return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: widget.isDark ? const Color(0xFF141D2E) : Colors.white,
+                      color: widget.isDark
+                          ? const Color(0xFF141D2E)
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: color.primary.withOpacity(0.6),
                         width: 1.5,
                       ),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Color Pill
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: color.jewelGradient,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-
-                        // Name Text Field
-                        Expanded(
-                          child: TextField(
-                            controller: _nameControllers[index],
-                            maxLength: 16,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                            decoration: InputDecoration(
-                              counterText: '',
-                              border: InputBorder.none,
-                              labelText: '${color.displayName} Player',
-                              labelStyle: TextStyle(
-                                color: color.primary,
-                                fontWeight: FontWeight.w600,
+                        Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: color.jewelGradient,
+                                border: Border.all(
+                                    color: Colors.white, width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                        color.primary.withOpacity(0.45),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text(
+                                  color.emblemGlyph,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.0,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _nameControllers[index],
+                                maxLength: 16,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700),
+                                decoration: InputDecoration(
+                                  counterText: '',
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  labelText:
+                                      '${color.displayName} ${color.emblemGlyph} Player',
+                                  labelStyle: TextStyle(
+                                    color: color.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Color picker: tap to claim, tap taken to swap.
+                        Row(
+                          children: _allColors.map((c) {
+                            final selected = c == color;
+                            final taken = activeColors.contains(c);
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.only(right: 10),
+                              child: GestureDetector(
+                                onTap: () =>
+                                    _pickColor(index, c),
+                                child: Opacity(
+                                  opacity:
+                                      (!selected && taken) ? 0.45 : 1.0,
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: c.jewelGradient,
+                                      border: Border.all(
+                                        color: selected
+                                            ? Colors.white
+                                            : Colors.white30,
+                                        width: selected ? 3.0 : 1.5,
+                                      ),
+                                      boxShadow: [
+                                        if (selected)
+                                          BoxShadow(
+                                            color: c.primary
+                                                .withOpacity(0.6),
+                                            blurRadius: 10,
+                                          ),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        c.emblemGlyph,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: selected ? 17 : 14,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
                       ],
                     ),
                   );
                 },
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
+
+              // Settings: sound + vibration toggles.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: widget.isDark
+                      ? const Color(0xFF141D2E)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: widget.isDark
+                        ? const Color(0xFF283650)
+                        : const Color(0xFFD6CEBD),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding:
+                          EdgeInsets.only(top: 8, bottom: 2),
+                      child: Text(
+                        'SETTINGS',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: Color(0xFFE9C46A),
+                        ),
+                      ),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Sound effects',
+                          style:
+                              TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text(
+                          'Dice, moves, captures, victory'),
+                      secondary: Icon(
+                        _soundOn
+                            ? Icons.volume_up_rounded
+                            : Icons.volume_off_rounded,
+                      ),
+                      value: _soundOn,
+                      onChanged: (v) {
+                        setState(() => _soundOn = v);
+                        AudioService.setMuted(!v);
+                        HapticsService.selection();
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Vibration',
+                          style:
+                              TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text(
+                          'Light haptics for roll, move, capture'),
+                      secondary: Icon(
+                        _vibrationOn
+                            ? Icons.vibration_rounded
+                            : Icons.mobile_off_rounded,
+                      ),
+                      value: _vibrationOn,
+                      onChanged: (v) {
+                        setState(() => _vibrationOn = v);
+                        HapticsService.setEnabled(v);
+                        HapticsService.selection();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
 
               // Start Game Button
               ElevatedButton(

@@ -6,17 +6,17 @@ import '../../models/ludo_color.dart';
 import '../../models/token.dart';
 import '../../services/haptics_service.dart';
 
-/// Height of a piece as a multiple of its width. The board uses this to anchor
-/// the pin's head on the square it occupies.
-const double kTokenPinAspect = 1.06;
+/// Geometry helpers used by the board to anchor orbs on squares.
+const double kTokenPinAspect = 1.0;
+const double kTokenHeadOffset = 0.5;
 
-/// Fraction of the piece height at which the head sits, used by the board to
-/// line the head up with the square centre.
-const double kTokenHeadOffset = 0.37;
-
-/// A piece drawn as a map-pin / location marker, matching the sample games:
-/// a light bevelled pin body with a coloured disc in the head, its point
-/// landing on the seat in the middle of the piece.
+/// Large 3D glossy orb — completely different from the old map-pin.
+///
+/// * Diameter fills ~96% of a track cell, 48dp minimum tap target.
+/// * Radial orb gradient + white specular + bottom bounce-light.
+/// * Color-blind double-coding: unique emblem glyph (▲ ● ★ ■) watermarked
+///   behind the token number, plus staggered luminance per color.
+/// * Movable tokens get a pulsing golden halo + gentle bounce.
 class TokenWidget extends StatefulWidget {
   final Token token;
   final double size;
@@ -45,14 +45,12 @@ class _TokenWidgetState extends State<TokenWidget>
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 760),
+      duration: const Duration(milliseconds: 720),
     );
-    _pulseScale = Tween<double>(begin: 1.0, end: 1.12).animate(
+    _pulseScale = Tween<double>(begin: 1.0, end: 1.14).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    if (widget.isMovable) {
-      _pulseController.repeat(reverse: true);
-    }
+    if (widget.isMovable) _pulseController.repeat(reverse: true);
   }
 
   @override
@@ -83,38 +81,40 @@ class _TokenWidgetState extends State<TokenWidget>
   @override
   Widget build(BuildContext context) {
     final w = widget.size;
-    final h = w * kTokenPinAspect;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // A comfortable minimum touch target, expanded outside the paint bounds so
-    // it never changes where the piece appears to sit.
-    final pad = (math.max(44.0, w) - w) / 2;
+    final pad = (math.max(48.0, w) - w) / 2;
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        SizedBox(
-          width: w,
-          height: h,
-          child: AnimatedBuilder(
-            animation: _pulseController,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: widget.isMovable ? _pulseScale.value : 1.0,
-                child: CustomPaint(
-                  size: Size(w, h),
-                  painter: _PinPainter(
-                    color: widget.token.color,
-                    isHome: widget.token.isHome,
-                    number: widget.token.id + 1,
-                    size: w,
-                    selectable: widget.isMovable,
-                    shadow: isDark ? 0.34 : 0.22,
+        AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, child) {
+            final bounce = widget.isMovable ? _pulseScale.value : 1.0;
+            return Transform.scale(
+              scale: bounce,
+              // Slight vertical hop while selectable so it reads from afar.
+              child: Transform.translate(
+                offset: widget.isMovable
+                    ? Offset(0, -2.0 * (_pulseScale.value - 1.0) * 10)
+                    : Offset.zero,
+                child: SizedBox(
+                  width: w,
+                  height: w,
+                  child: CustomPaint(
+                    size: Size(w, w),
+                    painter: _OrbPainter(
+                      color: widget.token.color,
+                      isHome: widget.token.isHome,
+                      number: widget.token.id + 1,
+                      selectable: widget.isMovable,
+                      shadow: isDark ? 0.42 : 0.28,
+                    ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
         Positioned(
           left: -pad,
@@ -131,137 +131,170 @@ class _TokenWidgetState extends State<TokenWidget>
   }
 }
 
-class _PinPainter extends CustomPainter {
+class _OrbPainter extends CustomPainter {
   final LudoColor color;
   final bool isHome;
   final int number;
-  final double size;
   final bool selectable;
   final double shadow;
-  final bool showGlyph;
 
-  _PinPainter({
+  _OrbPainter({
     required this.color,
     required this.isHome,
     required this.number,
-    required this.size,
     required this.selectable,
     required this.shadow,
-    this.showGlyph = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
-    final h = size.height;
+    final c = Offset(w / 2, w / 2);
+    final r = w / 2;
 
-    // Geometry of the marker. The head is a circle sitting above a short
-    // tapered point, matching the reference pieces.
-    final headR = w * 0.42;
-    final headCx = w / 2;
-    final headCy = h * kTokenHeadOffset;
-    final tipY = h * 0.98;
-    final shoulderY = headCy + headR * 0.30;
-
-    final head = Offset(headCx, headCy);
-
-    // Soft drop shadow under the whole marker.
+    // Drop shadow.
     canvas.drawCircle(
-      Offset(headCx, headCy + h * 0.05),
-      headR * 0.98,
+      c + Offset(0, w * 0.07),
+      r * 0.94,
       Paint()
         ..color = Colors.black.withOpacity(shadow)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.07),
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.08),
     );
 
+    // Selectable golden halo.
     if (selectable) {
       canvas.drawCircle(
-        head,
-        headR * 1.30,
+        c,
+        r * 1.18,
         Paint()
-          ..color = color.primary.withOpacity(0.85)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.05),
+          ..color = const Color(0xFFF2C14E).withOpacity(0.85)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.07),
+      );
+      canvas.drawCircle(
+        c,
+        r * 1.06,
+        Paint()
+          ..color = Colors.white.withOpacity(0.85)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(2.0, w * 0.06),
       );
     }
 
-    // Pin silhouette: circle head joined to a point.
-    final body = Path()
-      ..addOval(Rect.fromCircle(center: head, radius: headR))
-      ..moveTo(headCx - headR * 0.78, shoulderY)
-      ..lineTo(headCx, tipY)
-      ..lineTo(headCx + headR * 0.78, shoulderY)
-      ..close();
-
-
-    // Light bevelled shell.
-    canvas.drawPath(
-      body,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: const [Color(0xFFFFFFFF), Color(0xFFE8EDF4), Color(0xFFB4BECC)],
-        ).createShader(Rect.fromLTWH(0, 0, w, h)),
-    );
-
-    // Subtle inner shade along the lower-right of the shell.
-    canvas.save();
-    canvas.clipPath(body);
+    // Orb body: radial 3D gradient.
     canvas.drawCircle(
-      Offset(headCx + w * 0.30, headCy + h * 0.30),
-      headR * 1.5,
-      Paint()..color = Colors.black.withOpacity(0.10),
+      c,
+      r * 0.96,
+      Paint()..shader = color.orbGradient.createShader(
+        Rect.fromCircle(center: c, radius: r),
+      ),
+    );
+    // Inner depth: darken lower-right crescent.
+    canvas.save();
+    canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: r * 0.96)));
+    canvas.drawCircle(
+      c + Offset(r * 0.42, r * 0.46),
+      r * 1.05,
+      Paint()..color = Colors.black.withOpacity(0.22),
     );
     canvas.restore();
 
-    // Outline.
-    canvas.drawPath(
-      body,
-      Paint()
-        ..color = const Color(0xFF7C8899)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.0, w * 0.035),
-    );
-
-    // Coloured disc in the head.
-    final discR = headR * 0.62;
-    canvas.drawCircle(head, discR, Paint()..color = color.primary);
+    // Crisp rim.
     canvas.drawCircle(
-      head.translate(0, -discR * 0.30),
-      discR * 0.62,
-      Paint()..color = color.lightGlow.withOpacity(0.45),
+      c,
+      r * 0.96,
+      Paint()
+        ..color = color.darkShade
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.6, w * 0.055),
     );
     canvas.drawCircle(
-      head,
-      discR,
+      c,
+      r * 0.88,
       Paint()
-        ..color = const Color(0xFF3A3F4B)
+        ..color = Colors.white.withOpacity(0.35)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.0, w * 0.030),
+        ..strokeWidth = math.max(1.0, w * 0.03),
     );
 
-    // Glyph.
-    if (isHome) {
-      _star(canvas, head, discR * 0.72, Paint()..color = Colors.white);
-    } else if (showGlyph) {
-      _text(canvas, head, '$number', discR);
+    // Specular highlight (top-left gloss).
+    canvas.drawEllipse(
+      Rect.fromCenter(
+        center: c + Offset(-r * 0.34, -r * 0.40),
+        width: r * 0.95,
+        height: r * 0.62,
+      ),
+      Paint()..color = Colors.white.withOpacity(0.75),
+    );
+    canvas.drawCircle(
+      c + Offset(-r * 0.42, -r * 0.46),
+      r * 0.14,
+      Paint()..color = Colors.white.withOpacity(0.95),
+    );
+
+    // Shape-coded emblem watermark (color-blind aid).
+    _emblemText(
+      canvas, c + Offset(0, -r * 0.06), color.emblemGlyph, r * 1.15,
+      Colors.white.withOpacity(0.30),
+    );
+
+    if (number == 0) {
+      // Avatar mode: show the shape emblem boldly.
+      _emblemText(canvas, c, color.emblemGlyph, r * 0.95, Colors.white);
+    } else if (isHome) {
+      _star(canvas, c, r * 0.52, Paint()..color = Colors.white);
+      _star(canvas, c, r * 0.38, Paint()..color = color.darkShade);
+    } else {
+      // Token number — big, readable from across the table.
+      _number(canvas, c, '$number', r);
     }
   }
 
-  void _text(Canvas canvas, Offset centre, String value, double discR) {
-    final painter = TextPainter(
+  void _number(Canvas canvas, Offset centre, String value, double r) {
+    // Dark outline for legibility on amber.
+    final outline = TextPainter(
       text: TextSpan(
         text: value,
         style: TextStyle(
-          color: Colors.white,
-          fontSize: discR * 1.05,
+          color: color.darkShade,
+          fontSize: r * 0.95,
           fontWeight: FontWeight.w900,
           height: 1.0,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    painter.paint(canvas, centre - Offset(painter.width / 2, painter.height / 2));
+    // Stroke via multiple offsets (cheap outline).
+    for (final o in [
+      const Offset(1.5, 0), const Offset(-1.5, 0),
+      const Offset(0, 1.5), const Offset(0, -1.5),
+    ]) {
+      outline.paint(canvas, centre - Offset(outline.width / 2, outline.height / 2) + o);
+    }
+    final face = TextPainter(
+      text: TextSpan(
+        text: value,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: r * 0.95,
+          fontWeight: FontWeight.w900,
+          height: 1.0,
+          shadows: const [Shadow(color: Colors.black45, blurRadius: 3)],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    face.paint(canvas, centre - Offset(face.width / 2, face.height / 2));
+  }
+
+  void _emblemText(Canvas canvas, Offset centre, String glyph, double fontSize, Color col) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: glyph,
+        style: TextStyle(color: col, fontSize: fontSize, fontWeight: FontWeight.w900, height: 1.0),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, centre - Offset(tp.width / 2, tp.height / 2));
   }
 
   void _star(Canvas canvas, Offset centre, double outer, Paint paint) {
@@ -285,17 +318,14 @@ class _PinPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _PinPainter old) =>
+  bool shouldRepaint(covariant _OrbPainter old) =>
       old.color != color ||
       old.isHome != isHome ||
       old.number != number ||
-      old.size != size ||
-      old.selectable != selectable ||
-      old.showGlyph != showGlyph ||
-      old.shadow != shadow;
+      old.selectable != selectable;
 }
 
-/// A small map-pin used as a player's avatar on the compact cards.
+/// Compact orb avatar for player cards.
 class PinAvatar extends StatelessWidget {
   final LudoColor color;
   final double size;
@@ -310,19 +340,16 @@ class PinAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w = size * 0.80;
     return SizedBox(
-      width: w,
+      width: size,
       height: size,
       child: CustomPaint(
-        painter: _PinPainter(
+        painter: _OrbPainter(
           color: color,
           isHome: false,
           number: 0,
-          size: w,
           selectable: false,
-          showGlyph: false,
-          shadow: isDark ? 0.34 : 0.20,
+          shadow: isDark ? 0.35 : 0.22,
         ),
       ),
     );

@@ -23,6 +23,6 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify GameScreen is now displayed with turn banner and dice controls
-    expect(find.text('TAP DICE TO ROLL'), findsOneWidget);
+    expect(find.textContaining('TAP DICE TO ROLL'), findsOneWidget);
   });
 }
