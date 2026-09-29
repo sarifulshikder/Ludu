@@ -323,13 +323,15 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final gameState = ref.watch(gameControllerProvider);
     final controller = ref.read(gameControllerProvider.notifier);
     final settings = ref.watch(settingsControllerProvider);
-    final cfg = LuduTheme.forMode(settings.appTheme);
+    final isDark = settings.isDark;
+    final cfg = LuduTheme.forMode(settings.appTheme, isDark: isDark);
 
     SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle.light.copyWith(
+      (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
         statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: cfg.backgroundGradient.last,
-        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
 
@@ -377,7 +379,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   // Slim top bar (38dp)
                   SizedBox(
                     height: _topBarHeight,
-                    child: _buildTopBar(gameState, cfg),
+                    child: _buildTopBar(gameState, cfg, isDark),
                   ),
 
                   // Top player area (holds Red & Green chips close to board)
@@ -406,6 +408,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       timeScale: settings.timeScale,
                       themeMode: settings.appTheme,
                       themeConfig: cfg,
+                      isDark: isDark,
                       onTokenSelected: (tokenId) {
                         if (_boardAnimating || _passFreeze) return;
                         _autoMoveTimer?.cancel();
@@ -547,12 +550,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   /// Slim top bar: back, title, sound, pause menu.
-  Widget _buildTopBar(GameState gameState, LuduThemeConfig cfg) {
+  Widget _buildTopBar(GameState gameState, LuduThemeConfig cfg, bool isDark) {
     Widget roundButton(IconData icon, String tooltip, VoidCallback onTap) {
       return Tooltip(
         message: tooltip,
         child: Material(
-          color: Colors.white.withOpacity(0.08),
+          color: isDark
+              ? Colors.white.withOpacity(0.08)
+              : Colors.black.withOpacity(0.06),
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
@@ -560,7 +565,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             child: SizedBox(
               width: 34,
               height: 34,
-              child: Icon(icon, size: 18, color: Colors.white),
+              child: Icon(
+                icon,
+                size: 18,
+                color: isDark ? Colors.white : const Color(0xFF1B1812),
+              ),
             ),
           ),
         ),

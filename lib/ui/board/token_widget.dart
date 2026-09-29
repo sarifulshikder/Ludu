@@ -170,6 +170,8 @@ class _PawnPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final cx = w / 2;
+    final cy = w / 2;
+    final center = Offset(cx, cy);
 
     final primary = themePlayerColor?.primary ?? color.primary;
     final dark = themePlayerColor?.darkShade ?? color.darkShade;
@@ -177,192 +179,220 @@ class _PawnPainter extends CustomPainter {
     final highlight = themePlayerColor?.highlight ?? color.orbHighlight;
     final accentRing = themePlayerColor?.accentRing ?? const Color(0xFFF2C14E);
 
-    // Ground drop shadow (increases when lifted)
+    final double coinR = w * 0.47;
+
+    // 1. Ground Drop Shadow (larger & softer when lifted)
     final shadowScale = selectable ? 1.25 : 1.0;
+    final shadowY = selectable ? cy + w * 0.08 : cy + w * 0.035;
     canvas.drawOval(
       Rect.fromCenter(
-        center: Offset(cx, w * (selectable ? 0.94 : 0.90)),
-        width: w * 0.66 * shadowScale,
-        height: w * 0.15 * shadowScale,
+        center: Offset(cx, shadowY),
+        width: coinR * 2.0 * shadowScale,
+        height: coinR * 0.55 * shadowScale,
       ),
       Paint()
-        ..color = Colors.black.withOpacity(selectable ? 0.48 : shadow)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * (selectable ? 0.09 : 0.06)),
+        ..color = Colors.black.withOpacity(selectable ? 0.45 : shadow)
+        ..maskFilter =
+            MaskFilter.blur(BlurStyle.normal, w * (selectable ? 0.12 : 0.06)),
     );
 
-    // Last-move follow ring
+    // 2. Last-move follow ring
     if (isLastMoved && !selectable) {
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(cx, w * 0.50),
-          width: w * 1.04,
-          height: w * 1.08,
-        ),
+      canvas.drawCircle(
+        center,
+        coinR * 1.08,
         Paint()
           ..color = accentRing.withOpacity(0.95)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(2.2, w * 0.06),
+          ..strokeWidth = math.max(2.4, w * 0.065),
       );
     }
 
-    // Selectable pulsing halo
+    // 3. Selectable pulsing aura
     if (selectable) {
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(cx, w * 0.50),
-          width: w * 1.18,
-          height: w * 1.22,
-        ),
+      canvas.drawCircle(
+        center,
+        coinR * 1.18,
         Paint()
           ..color = accentRing.withOpacity(0.55)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.08),
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.10),
       );
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(cx, w * 0.50),
-          width: w * 1.02,
-          height: w * 1.06,
-        ),
+      canvas.drawCircle(
+        center,
+        coinR * 1.06,
         Paint()
-          ..color = Colors.white.withOpacity(0.90)
+          ..color = Colors.white.withOpacity(0.95)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(2.0, w * 0.05),
+          ..strokeWidth = math.max(2.2, w * 0.055),
       );
     }
 
-    // Tapered pawn torso
-    final body = Path()
-      ..moveTo(cx - w * 0.30, w * 0.86)
-      ..lineTo(cx - w * 0.155, w * 0.46)
-      ..quadraticBezierTo(cx - w * 0.14, w * 0.40, cx - w * 0.10, w * 0.385)
-      ..lineTo(cx + w * 0.10, w * 0.385)
-      ..quadraticBezierTo(cx + w * 0.14, w * 0.40, cx + w * 0.155, w * 0.46)
-      ..lineTo(cx + w * 0.30, w * 0.86)
-      ..quadraticBezierTo(cx, w * 0.92, cx - w * 0.30, w * 0.86)
-      ..close();
+    // 4. Outer Minted Coin Bevel Rim (Metallic Gold / Cyber Neon / Polished Brass)
+    final rimColors = themeMode == AppThemeMode.neonGlass
+        ? [
+            const Color(0xFFE0F7FA),
+            const Color(0xFF00E5FF),
+            const Color(0xFF0288D1),
+            const Color(0xFF01579B),
+          ]
+        : themeMode == AppThemeMode.woodenLuxe
+            ? [
+                const Color(0xFFFFF3D6),
+                const Color(0xFFD4AF37),
+                const Color(0xFF9E772E),
+                const Color(0xFF5A3E14),
+              ]
+            : [
+                const Color(0xFFFFF6D8),
+                const Color(0xFFE5B842),
+                const Color(0xFFB8860B),
+                const Color(0xFF6B4E0F),
+              ];
 
+    final outerRimPaint = Paint()
+      ..shader = SweepGradient(
+        colors: rimColors,
+        stops: const [0.0, 0.35, 0.70, 1.0],
+        transform: const GradientRotation(-math.pi / 4),
+      ).createShader(Rect.fromCircle(center: center, radius: coinR));
+    canvas.drawCircle(center, coinR, outerRimPaint);
+
+    // Coin serrated / grooved milled rim ring
+    canvas.drawCircle(
+      center,
+      coinR * 0.93,
+      Paint()
+        ..color = Colors.white.withOpacity(0.55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, w * 0.022),
+    );
+
+    // 5. Stepped Recessed Coin Face (Inner Bevel)
+    final innerR = coinR * 0.85;
+    canvas.drawCircle(
+      center,
+      innerR,
+      Paint()..color = Colors.black.withOpacity(0.35),
+    );
+    canvas.drawCircle(
+      center + const Offset(0.8, 0.8),
+      innerR,
+      Paint()
+        ..color = Colors.white.withOpacity(0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+
+    // 6. Domed Jewel Core / Enamel Face
+    final faceR = coinR * 0.82;
+    final faceRect = Rect.fromCircle(center: center, radius: faceR);
+    final coreGradient = RadialGradient(
+      colors: [highlight, glow, primary, dark],
+      stops: const [0.0, 0.28, 0.72, 1.0],
+      center: const Alignment(-0.35, -0.40),
+      radius: 1.15,
+    );
+    canvas.drawCircle(
+        center, faceR, Paint()..shader = coreGradient.createShader(faceRect));
+
+    // Concentric minted medallion inner ring
+    final medallionR = coinR * 0.52;
+    canvas.drawCircle(
+      center,
+      medallionR,
+      Paint()
+        ..color = accentRing.withOpacity(0.40)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+
+    // 7. Embossed Center Emblem (Crown + Number / Star)
+    if (number == 0) {
+      // Pin avatar: centered royal crown
+      _drawRoyalCrown(canvas, center, coinR * 0.50, accentRing);
+    } else if (isHome) {
+      // Reached center home: gleaming 5-point golden victory star
+      _star(canvas, center, coinR * 0.45, Paint()..color = accentRing);
+      _star(canvas, center, coinR * 0.30,
+          Paint()..color = Colors.white.withOpacity(0.90));
+    } else {
+      // In-play coin: Embossed Royal Crown at top + Token Number at center
+      _drawRoyalCrown(
+          canvas, Offset(cx, cy - coinR * 0.22), coinR * 0.30, accentRing);
+      _number(canvas, Offset(cx, cy + coinR * 0.20), '$number', w);
+    }
+
+    // 8. Glossy Specular Curved Arc Highlight (across upper left of coin)
+    canvas.save();
+    canvas.clipRRect(
+        RRect.fromRectAndRadius(faceRect, Radius.circular(faceR)));
+    final shinePath = Path()
+      ..moveTo(cx - faceR * 0.85, cy - faceR * 0.30)
+      ..quadraticBezierTo(cx - faceR * 0.20, cy - faceR * 0.90,
+          cx + faceR * 0.60, cy - faceR * 0.65)
+      ..quadraticBezierTo(cx + faceR * 0.10, cy - faceR * 0.35,
+          cx - faceR * 0.45, cy + faceR * 0.25)
+      ..close();
     canvas.drawPath(
-      body,
+      shinePath,
       Paint()
         ..shader = LinearGradient(
-          colors: [glow, primary, dark],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ).createShader(body.getBounds()),
-    );
-
-    // Torso specular & shading
-    canvas.save();
-    canvas.clipPath(body);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx + w * 0.10, w * 0.86),
-        width: w * 0.62,
-        height: w * 0.50,
-      ),
-      Paint()..color = Colors.black.withOpacity(0.22),
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx - w * 0.10, w * 0.60),
-        width: w * 0.12,
-        height: w * 0.40,
-      ),
-      Paint()..color = highlight.withOpacity(0.60),
+          colors: [
+            Colors.white.withOpacity(0.60),
+            Colors.white.withOpacity(0.12),
+            Colors.transparent,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(faceRect),
     );
     canvas.restore();
+  }
 
-    // Collar ring around neck
-    final collar = Rect.fromCenter(
-      center: Offset(cx, w * 0.385),
-      width: w * 0.28,
-      height: w * 0.07,
+  void _drawRoyalCrown(Canvas canvas, Offset c, double size, Color col) {
+    final w = size;
+    final h = size * 0.72;
+    final top = c.dy - h / 2;
+    final bottom = c.dy + h / 2;
+    final left = c.dx - w / 2;
+    final right = c.dx + w / 2;
+
+    final path = Path()
+      ..moveTo(left, bottom)
+      ..lineTo(right, bottom)
+      ..lineTo(right * 0.96 + left * 0.04, top + h * 0.22)
+      ..lineTo(c.dx + w * 0.22, top + h * 0.52)
+      ..lineTo(c.dx, top)
+      ..lineTo(c.dx - w * 0.22, top + h * 0.52)
+      ..lineTo(left * 0.96 + right * 0.04, top + h * 0.22)
+      ..close();
+
+    // 3D Emboss shadow
+    canvas.drawPath(
+      path.shift(const Offset(0, 1.2)),
+      Paint()..color = Colors.black.withOpacity(0.38),
     );
-    canvas.drawOval(
-      collar,
-      Paint()..color = accentRing,
+    // Gold crown body
+    canvas.drawPath(
+      path,
+      Paint()..color = col,
     );
-    canvas.drawOval(
-      collar,
+    // Crown top highlight line
+    canvas.drawPath(
+      path,
       Paint()
-        ..color = Colors.white.withOpacity(0.65)
+        ..color = Colors.white.withOpacity(0.75)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.0, w * 0.025),
+        ..strokeWidth = 0.9,
     );
 
-    // Head orb
-    final headC = Offset(cx, w * 0.24);
-    final headR = w * 0.21;
-    canvas.drawCircle(
-      headC,
-      headR,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [highlight, primary, dark],
-          stops: const [0.0, 0.45, 1.0],
-          center: const Alignment(-0.35, -0.4),
-          radius: 1.1,
-        ).createShader(Rect.fromCircle(center: headC, radius: headR)),
-    );
-    canvas.drawCircle(
-      headC,
-      headR,
-      Paint()
-        ..color = accentRing.withOpacity(0.85)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.4, w * 0.038),
-    );
-    // Specular shine on head
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: headC + Offset(-headR * 0.32, -headR * 0.38),
-        width: headR * 0.85,
-        height: headR * 0.55,
-      ),
-      Paint()..color = Colors.white.withOpacity(0.82),
-    );
-
-    // Stepped base
-    final base = RRect.fromRectAndRadius(
-      Rect.fromLTWH(cx - w * 0.30, w * 0.82, w * 0.60, w * 0.10),
-      Radius.circular(w * 0.05),
-    );
-    canvas.drawRRect(
-      base,
-      Paint()
-        ..shader = LinearGradient(
-          colors: [primary, dark],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ).createShader(base.outerRect),
-    );
-    canvas.drawRRect(
-      base,
-      Paint()
-        ..color = accentRing
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.2, w * 0.03),
-    );
-
-    // Shape-coded emblem on the belly
-    _emblemText(
-      canvas,
-      Offset(cx, w * 0.60),
-      color.emblemGlyph,
-      w * 0.20,
-      Colors.white.withOpacity(0.95),
-    );
-
-    if (number == 0) {
-      // Avatar mode
-      _emblemText(canvas, Offset(cx, w * 0.62), color.emblemGlyph,
-          w * 0.30, Colors.white);
-    } else if (isHome) {
-      _star(canvas, Offset(cx, w * 0.74), w * 0.10,
-          Paint()..color = accentRing);
-    } else {
-      _number(canvas, Offset(cx, w * 0.755), '$number', w);
-    }
+    // Crown jewel pearls on 3 peaks
+    final pearlR = size * 0.09;
+    canvas.drawCircle(Offset(c.dx, top), pearlR, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(left * 0.96 + right * 0.04, top + h * 0.22),
+        pearlR * 0.85, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(right * 0.96 + left * 0.04, top + h * 0.22),
+        pearlR * 0.85, Paint()..color = Colors.white);
   }
 
   void _number(Canvas canvas, Offset centre, String value, double w) {
@@ -371,32 +401,21 @@ class _PawnPainter extends CustomPainter {
         text: value,
         style: TextStyle(
           color: Colors.white,
-          fontSize: w * 0.15,
+          fontSize: w * 0.28,
           fontWeight: FontWeight.w900,
           height: 1.0,
-          shadows: const [Shadow(color: Colors.black87, blurRadius: 4)],
+          shadows: const [
+            Shadow(
+                color: Colors.black87,
+                blurRadius: 4,
+                offset: Offset(0, 1.5)),
+            Shadow(color: Colors.black45, blurRadius: 8),
+          ],
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     face.paint(canvas, centre - Offset(face.width / 2, face.height / 2));
-  }
-
-  void _emblemText(
-      Canvas canvas, Offset centre, String glyph, double fontSize, Color col) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: glyph,
-        style: TextStyle(
-            color: col,
-            fontSize: fontSize,
-            fontWeight: FontWeight.w900,
-            height: 1.0,
-            shadows: const [Shadow(color: Colors.black54, blurRadius: 3)]),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, centre - Offset(tp.width / 2, tp.height / 2));
   }
 
   void _star(Canvas canvas, Offset centre, double outer, Paint paint) {

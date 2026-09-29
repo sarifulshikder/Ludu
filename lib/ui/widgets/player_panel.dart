@@ -55,7 +55,8 @@ class PlayerPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cfg = themeConfig ?? LuduTheme.royalGold;
+    final cfg = themeConfig ??
+        (isDark ? LuduTheme.royalGold : LuduTheme.royalGoldLight);
     final color = player.color;
     final themeColor = cfg.colorOf(color);
     final finished = player.finishRank != null;
@@ -133,9 +134,13 @@ class PlayerPanel extends StatelessWidget {
                             fontSize: 12.0,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.2,
-                            color: isActive
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.88),
+                            color: isDark
+                                ? (isActive
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.88))
+                                : (isActive
+                                    ? themeColor.darkShade
+                                    : const Color(0xFF1B1812)),
                           ),
                         ),
                       ),
@@ -172,7 +177,9 @@ class PlayerPanel extends StatelessWidget {
                               fontSize: 8.5,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.5,
-                              color: themeColor.lightGlow,
+                              color: isDark
+                                  ? themeColor.lightGlow
+                                  : themeColor.primary,
                             ),
                           ),
                         ),
@@ -188,7 +195,9 @@ class PlayerPanel extends StatelessWidget {
                         ...partner!.tokens.map((t) => t.isHome),
                     ],
                     fill: teamMode ? teamAccent : themeColor.primary,
-                    idle: Colors.white.withOpacity(0.12),
+                    idle: isDark
+                        ? Colors.white.withOpacity(0.12)
+                        : Colors.black.withOpacity(0.10),
                     accent: isActive ? themeColor.primary.withOpacity(0.4) : null,
                   ),
                 ],

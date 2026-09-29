@@ -30,6 +30,7 @@ class LudoBoard extends StatefulWidget {
   /// Active premium theme.
   final AppThemeMode themeMode;
   final LuduThemeConfig? themeConfig;
+  final bool isDark;
 
   const LudoBoard({
     super.key,
@@ -39,6 +40,7 @@ class LudoBoard extends StatefulWidget {
     this.timeScale = 1.0,
     this.themeMode = AppThemeMode.royalGold,
     this.themeConfig,
+    this.isDark = false,
   });
 
   @override
@@ -70,7 +72,8 @@ class _LudoBoardState extends State<LudoBoard>
       (_baseOutMs * widget.timeScale).round().clamp(60, 600);
 
   LuduThemeConfig get _cfg =>
-      widget.themeConfig ?? LuduTheme.forMode(widget.themeMode);
+      widget.themeConfig ??
+      LuduTheme.forMode(widget.themeMode, isDark: widget.isDark);
 
   @override
   void initState() {
@@ -202,8 +205,8 @@ class _LudoBoardState extends State<LudoBoard>
         final double th = height / 15.0;
         final double tu = min(tw, th);
 
-        // Tokens almost fill the cell width (94%)
-        final double tokenSize = tw * 0.94;
+        // Tokens fill 96% of the cell width for a big, prominent coin look
+        final double tokenSize = tw * 0.96;
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(tu * 0.40),
@@ -212,7 +215,7 @@ class _LudoBoardState extends State<LudoBoard>
               Positioned.fill(
                 child: CustomPaint(
                   painter: BoardPainter(
-                    isDark: true,
+                    isDark: widget.isDark,
                     activeColor: widget.gameState.currentPlayer.color,
                     themeMode: widget.themeMode,
                     themeConfig: _cfg,
@@ -404,24 +407,24 @@ class _LudoBoardState extends State<LudoBoard>
         final bool isMovable = item['isMovable'];
         final bool isAnimating = item['isAnimating'];
 
-        // Compact base tokens and square path tokens fill ~94% of cell
+        // Compact base tokens and square path tokens fill 96% of cell
         double displaySize = tokenSize;
         Offset offset = Offset.zero;
         if (count > 1 && token.step != -1) {
           if (count == 2) {
-            displaySize = tokenSize * 0.74;
-            offset = Offset((i == 0 ? -1 : 1) * tw * 0.25, 0);
+            displaySize = tokenSize * 0.82;
+            offset = Offset((i == 0 ? -1 : 1) * tw * 0.22, 0);
           } else {
-            displaySize = tokenSize * 0.65;
+            displaySize = tokenSize * 0.72;
             const dx = [-1, 1, -1, 1];
             const dy = [-1, -1, 1, 1];
             final k = i % 4;
-            offset = Offset(dx[k] * tw * 0.25, dy[k] * th * 0.25);
+            offset = Offset(dx[k] * tw * 0.22, dy[k] * th * 0.22);
           }
         }
-        // Home medallion: 4 mini pawns in diamond
+        // Home medallion: 4 mini coins in diamond
         if (token.step >= 56) {
-          displaySize = tokenSize * 0.62;
+          displaySize = tokenSize * 0.70;
           const dx = [0, -1, 1, 0];
           const dy = [-1, 0, 0, 1];
           final k = token.id % 4;

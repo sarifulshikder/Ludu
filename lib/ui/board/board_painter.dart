@@ -31,7 +31,7 @@ class BoardPainter extends CustomPainter {
   });
 
   LuduThemeConfig get _cfg =>
-      themeConfig ?? LuduTheme.forMode(themeMode);
+      themeConfig ?? LuduTheme.forMode(themeMode, isDark: isDark);
 
   @override
   void paint(Canvas canvas, Size size) {

@@ -70,6 +70,9 @@ class GameSettings {
   /// Active premium theme.
   final AppThemeMode appTheme;
 
+  /// Dark mode (true) or light mode (false). Default false (Light mode).
+  final bool isDark;
+
   const GameSettings({
     this.autoMove = true,
     this.blockRule = false,
@@ -80,6 +83,7 @@ class GameSettings {
     this.fastAnimation = false,
     this.faceToFaceMode = false,
     this.appTheme = AppThemeMode.royalGold,
+    this.isDark = false,
   });
 
   /// Duration multiplier for hop/dice animations (1.0 normal, 0.55 fast).
@@ -95,6 +99,7 @@ class GameSettings {
     bool? fastAnimation,
     bool? faceToFaceMode,
     AppThemeMode? appTheme,
+    bool? isDark,
   }) {
     return GameSettings(
       autoMove: autoMove ?? this.autoMove,
@@ -106,6 +111,7 @@ class GameSettings {
       fastAnimation: fastAnimation ?? this.fastAnimation,
       faceToFaceMode: faceToFaceMode ?? this.faceToFaceMode,
       appTheme: appTheme ?? this.appTheme,
+      isDark: isDark ?? this.isDark,
     );
   }
 
@@ -119,6 +125,7 @@ class GameSettings {
         'fastAnimation': fastAnimation,
         'faceToFaceMode': faceToFaceMode,
         'appTheme': appTheme.name,
+        'isDark': isDark,
       };
 
   factory GameSettings.fromJson(Map<String, dynamic> json) {
@@ -135,6 +142,7 @@ class GameSettings {
         (t) => t.name == (json['appTheme'] as String?),
         orElse: () => AppThemeMode.royalGold,
       ),
+      isDark: json['isDark'] as bool? ?? false,
     );
   }
 
@@ -151,7 +159,8 @@ class GameSettings {
           volume == other.volume &&
           fastAnimation == other.fastAnimation &&
           faceToFaceMode == other.faceToFaceMode &&
-          appTheme == other.appTheme;
+          appTheme == other.appTheme &&
+          isDark == other.isDark;
 
   @override
   int get hashCode => Object.hash(
@@ -164,5 +173,6 @@ class GameSettings {
         fastAnimation,
         faceToFaceMode,
         appTheme,
+        isDark,
       );
 }

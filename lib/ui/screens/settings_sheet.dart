@@ -25,7 +25,8 @@ class SettingsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsControllerProvider);
     final updater = ref.read(settingsControllerProvider.notifier);
-    final cfg = LuduTheme.forMode(settings.appTheme);
+    final isDark = settings.isDark;
+    final cfg = LuduTheme.forMode(settings.appTheme, isDark: isDark);
 
     void update(GameSettings next) {
       HapticsService.selection();
@@ -75,13 +76,13 @@ class SettingsSheet extends ConsumerWidget {
             const SizedBox(height: 14),
 
             // --- Theme Selection Section ---
-            const Text(
+            Text(
               'BOARD & PIECE THEME',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.2,
-                color: Colors.white70,
+                color: isDark ? Colors.white70 : Colors.black87,
               ),
             ),
             const SizedBox(height: 8),
@@ -94,6 +95,7 @@ class SettingsSheet extends ConsumerWidget {
                       child: _ThemeCard(
                         mode: mode,
                         isSelected: settings.appTheme == mode,
+                        isDark: isDark,
                         onTap: () => update(settings.copyWith(appTheme: mode)),
                       ),
                     ),
@@ -102,6 +104,22 @@ class SettingsSheet extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 14),
+
+            // --- Dark Mode Toggle ---
+            _tile(
+              title: 'Dark mode',
+              subtitle: isDark
+                  ? 'Midnight arena & deep contrast'
+                  : 'Luminous light porcelain & gold',
+              icon: isDark
+                  ? Icons.dark_mode_rounded
+                  : Icons.light_mode_rounded,
+              value: isDark,
+              onChanged: (v) {
+                update(settings.copyWith(isDark: v));
+                onToggleTheme();
+              },
+            ),
 
             // --- Face-to-Face Mode ---
             _tile(
@@ -286,17 +304,19 @@ class SettingsSheet extends ConsumerWidget {
 class _ThemeCard extends StatelessWidget {
   final AppThemeMode mode;
   final bool isSelected;
+  final bool isDark;
   final VoidCallback onTap;
 
   const _ThemeCard({
     required this.mode,
     required this.isSelected,
+    this.isDark = true,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cfg = LuduTheme.forMode(mode);
+    final cfg = LuduTheme.forMode(mode, isDark: isDark);
 
     return InkWell(
       onTap: onTap,
@@ -334,7 +354,9 @@ class _ThemeCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                color: isSelected ? Colors.white : Colors.white70,
+                color: isSelected
+                    ? (isDark ? Colors.white : const Color(0xFF1B1812))
+                    : (isDark ? Colors.white70 : const Color(0xFF555555)),
               ),
             ),
           ],

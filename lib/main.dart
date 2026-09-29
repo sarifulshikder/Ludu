@@ -50,34 +50,32 @@ class LuduApp extends StatefulWidget {
 }
 
 class _LuduAppState extends State<LuduApp> {
-  // Clean light look by default (§9); midnight arena one tap away.
-  ThemeMode _themeMode = ThemeMode.light;
-
-  void _toggleTheme() {
-    HapticsService.selection();
-    setState(() {
-      _themeMode = (_themeMode == ThemeMode.dark)
-          ? ThemeMode.light
-          : ThemeMode.dark;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return ProviderScope(
       child: Consumer(
         builder: (context, ref, child) {
           final settings = ref.watch(settingsControllerProvider);
-          final activeTheme = LuduTheme.getTheme(settings.appTheme);
+          final isDark = settings.isDark;
+          final lightTheme = LuduTheme.getTheme(settings.appTheme, isDark: false);
+          final darkTheme = LuduTheme.getTheme(settings.appTheme, isDark: true);
+
+          void toggleTheme() {
+            HapticsService.selection();
+            ref.read(settingsControllerProvider.notifier).update(
+                  settings.copyWith(isDark: !isDark),
+                );
+          }
+
           return MaterialApp(
             title: 'Ludu',
             debugShowCheckedModeBanner: false,
-            theme: activeTheme,
-            darkTheme: activeTheme,
-            themeMode: ThemeMode.dark,
+            theme: lightTheme,
+            darkTheme: darkTheme,
+            themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
             home: LuduMainNavigator(
-              onToggleTheme: _toggleTheme,
-              isDark: true,
+              onToggleTheme: toggleTheme,
+              isDark: isDark,
             ),
           );
         },
