@@ -358,6 +358,37 @@ class _LudoBoardState extends State<LudoBoard>
     });
   }
 
+  /// Handles a tap on a token inside the stack fan-out.
+  ///
+  /// Root-cause note: the popup must NOT wrap [TokenWidget] in its own
+  /// [GestureDetector]. TokenWidget already owns an internal tap catcher;
+  /// a second detector around it competes in the same gesture arena and
+  /// the inner one wins, so the outer callback never fires and the tap
+  /// silently dies (this was the "tap does nothing" bug). The selection
+  /// handler is passed *into* TokenWidget via [TokenWidget.onTap], leaving
+  /// exactly one tap target per popup token.
+  void _pickStackToken(Token token) {
+    final gameState = widget.gameState;
+    final int? roll = gameState.currentDiceRoll;
+    if (roll == null) {
+      // The picker only ever opens after a roll with 2+ movable tokens,
+      // so reaching here means engine and UI disagree — close loudly.
+      debugPrint(
+          'LudoBoard: stack pick rejected (no pending dice roll) for $token.');
+      setState(() => _stackPick = null);
+      return;
+    }
+    if (!gameState.movableTokenIds.contains(token.id)) {
+      debugPrint(
+          'LudoBoard: stack pick rejected (token ${token.id} not movable '
+          'for roll $roll, movables=${gameState.movableTokenIds}).');
+      setState(() => _stackPick = null);
+      return;
+    }
+    setState(() => _stackPick = null);
+    _startStepByStepMovement(token, roll);
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -620,24 +651,20 @@ class _LudoBoardState extends State<LudoBoard>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      // NOTE: no GestureDetector wrapper here — TokenWidget
+                      // owns the single tap target via onTap (see
+                      // _pickStackToken). A wrapper detector would compete
+                      // with it and swallow the tap.
                       for (int i = 0; i < items.length; i++) ...[
                         if (i > 0) SizedBox(width: gap),
-                        GestureDetector(
-                          onTap: () {
-                            final tok = items[i].token;
-                            final roll =
-                                widget.gameState.currentDiceRoll ?? 0;
-                            setState(() => _stackPick = null);
-                            _startStepByStepMovement(tok, roll);
-                          },
-                          child: TokenWidget(
-                            token: items[i].token,
-                            size: pickSize,
-                            isMovable: true,
-                            themeMode: widget.themeMode,
-                            themePlayerColor:
-                                _cfg.colorOf(items[i].token.color),
-                          ),
+                        TokenWidget(
+                          token: items[i].token,
+                          size: pickSize,
+                          isMovable: true,
+                          themeMode: widget.themeMode,
+                          themePlayerColor:
+                              _cfg.colorOf(items[i].token.color),
+                          onTap: () => _pickStackToken(items[i].token),
                         ),
                       ],
                     ],
