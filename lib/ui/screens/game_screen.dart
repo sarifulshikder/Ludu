@@ -22,13 +22,21 @@ import 'ranking_screen.dart';
 import 'rules_screen.dart';
 import 'settings_sheet.dart';
 
-/// Game Screen with Square 15×15 Board, Compact Player Chips, Single Gliding Dice.
+/// Game Screen with Square 15×15 Board, large chips, single gliding dice.
 ///
-/// 1. Perfectly square 15x15 board, edge to edge, centered vertically.
-/// 2. Slim player chips (48–54 dp tall) placed close to board corners.
-/// 3. ONE large dice (96–110 dp) gliding smoothly to the active player's corner.
-/// 4. Face-to-face rotation mode for opponents across the phone.
-/// 5. Seamless theme styling (Royal Gold, Neon Glass, Wooden Luxe).
+/// Polish pass:
+/// * Perfectly square 15x15 board with a 10 dp safe inset (edge tokens,
+///   glow and lift effects are never clipped) plus a soft board
+///   shadow/glow pedestal.
+/// * Large player chips (70 dp) kept close to the board (12 dp gaps).
+/// * ONE large dice (110 dp) sitting directly beside the active player's
+///   chip with a 12 dp gap, on the side facing the board's center. The
+///   chip rows reserve a middle dice slot so the dice never overlaps any
+///   text or border; it glides smoothly (450 ms) when the turn passes.
+/// * Balanced spacing above/below so the board looks centered, over a
+///   tasteful themed background (vignette, subtle pattern, glow).
+/// * Face-to-face rotation mode for opponents across the phone (stays as
+///   a user setting).
 class GameScreen extends ConsumerStatefulWidget {
   final VoidCallback onNewGame;
   final VoidCallback onToggleTheme;
@@ -55,7 +63,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   Timer? _autoMoveTimer;
 
   static const double _topBarHeight = 38.0;
-  static const double _chipGap = 4.0;
+  static const double _chipBoardGap = 12.0;
+  static const double _diceGap = 12.0;
+  static const double _diceSize = 110.0;
+  static const double _diceSlotWidth = 126.0;
+  static const double _rowHeight = 118.0;
+  static const double _boardSideInset = 10.0;
+
+  /// Dice slot placeholders (empty space reserved so the gliding dice
+  /// never overlaps text or borders). The single overlay dice flies
+  /// between the measured slot centers.
+  final GlobalKey _topSlotKey = GlobalKey();
+  final GlobalKey _bottomSlotKey = GlobalKey();
+  final GlobalKey _stackKey = GlobalKey();
+  Offset? _diceCenter;
+  LudoColor? _diceCenterFor;
 
   /// Panels are placed by base colour:
   /// Top-left Red, Top-right Green, Bottom-left Blue, Bottom-right Yellow.
@@ -80,6 +102,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   void _toggleMute() {
     HapticsService.light();
+    AudioService.playUiClick();
     setState(() {
       AudioService.toggleMute();
       _isMuted = AudioService.isMuted;
@@ -88,6 +111,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   void _openSettings() {
     HapticsService.light();
+    AudioService.playUiClick();
     final settings = ref.read(settingsControllerProvider);
     final cfg = LuduTheme.forMode(settings.appTheme);
     showModalBottomSheet(
@@ -107,6 +131,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   void _openPauseMenu() {
     HapticsService.light();
+    AudioService.playUiClick();
     final settings = ref.read(settingsControllerProvider);
     final cfg = LuduTheme.forMode(settings.appTheme);
     showModalBottomSheet(
@@ -305,22 +330,34 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
   }
 
-  /// Calculates the 4 corner alignment targets for the single gliding dice.
-  /// Values tuned so dice appears next to active chip, not overlapping it.
-  Alignment _getDiceAlignment(LudoColor color) {
-    switch (color) {
-      case LudoColor.red:
-        // Top-left chip → dice to the left of the chip row
-        return const Alignment(-0.92, -0.88);
-      case LudoColor.green:
-        // Top-right chip → dice to the right of the chip row
-        return const Alignment(0.92, -0.88);
-      case LudoColor.yellow:
-        // Bottom-right chip → dice to the right of the chip row
-        return const Alignment(0.92, 0.88);
-      case LudoColor.blue:
-        // Bottom-left chip → dice to the left of the chip row
-        return const Alignment(-0.92, 0.88);
+  /// Measures the reserved dice slots and glides the single overlay dice
+  /// to the active slot. Slots reserve empty space so the 110 dp dice —
+  /// parked 12 dp beside the active chip on the board-facing side — never
+  /// overlaps text or borders.
+  void _syncDicePosition(LudoColor active, bool isTopActive) {
+    final slotKey = isTopActive ? _topSlotKey : _bottomSlotKey;
+    final stackBox =
+        _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    final slotBox =
+        slotKey.currentContext?.findRenderObject() as RenderBox?;
+    if (stackBox == null || slotBox == null) return;
+    final Offset slotTopLeft = slotBox.localToGlobal(Offset.zero);
+    final Offset stackTopLeft = stackBox.globalToLocal(slotTopLeft);
+    final Size slotSize = slotBox.size;
+    // Dice sits centered vertically in the slot, nudged ~8 dp toward the
+    // active side so Red→Green (and Blue→Yellow) still glides visibly
+    // while keeping >=12 dp gaps to both chips.
+    final bool leftActive = active == LudoColor.red || active == LudoColor.blue;
+    final double dx = leftActive ? -8.0 : 8.0;
+    final Offset center = Offset(
+      stackTopLeft.dx + slotSize.width / 2 + dx,
+      stackTopLeft.dy + slotSize.height / 2,
+    );
+    if (_diceCenter != center || _diceCenterFor != active) {
+      setState(() {
+        _diceCenter = center;
+        _diceCenterFor = active;
+      });
     }
   }
 
@@ -358,19 +395,22 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         !_boardAnimating &&
         !_passFreeze;
 
-    final screenHeight = MediaQuery.of(context).size.height;
-    final double diceSize = (screenHeight * 0.095).clamp(76.0, 92.0);
-
     // Is active dice in top half of screen (Red or Green)?
     final isTopActive = activePlayer.color == LudoColor.red ||
         activePlayer.color == LudoColor.green;
     final isDiceRotated = settings.faceToFaceMode && isTopActive;
 
+    // Measure slots after layout so the overlay dice parks exactly in the
+    // reserved gap (never overlapping text/borders).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncDicePosition(activePlayer.color, isTopActive);
+    });
+
     return Scaffold(
       backgroundColor: cfg.backgroundGradient[0],
       body: Stack(
         children: [
-          // Subtle themed background (vignette + gold dust)
+          // Tasteful themed background (vignette + pattern + glow).
           Positioned.fill(
             child: CustomPaint(
               painter: _BackgroundPainter(
@@ -390,110 +430,136 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ),
             child: SafeArea(
               child: Stack(
-            children: [
-              // Main Layout Column
-              Column(
+                key: _stackKey,
                 children: [
-                  // Slim top bar (38dp)
-                  SizedBox(
-                    height: _topBarHeight,
-                    child: _buildTopBar(gameState, cfg, isDark),
-                  ),
+                  // Main layout column — balanced spacers center the board.
+                  Column(
+                    children: [
+                      // Slim top bar (38dp)
+                      SizedBox(
+                        height: _topBarHeight,
+                        child: _buildTopBar(gameState, cfg, isDark),
+                      ),
 
-                  // Top player area (holds Red & Green chips close to board)
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: _chipGap),
-                        child: _buildPanelRow(
-                          gameState,
-                          controller,
-                          settings,
-                          cfg,
-                          const [topLeft, topRight],
-                          isTopRow: true,
+                      // Top balancing spacer (mirrors the bottom one).
+                      const Expanded(flex: 1, child: SizedBox.shrink()),
+
+                      // Top player row with reserved middle dice slot.
+                      _buildPanelRow(
+                        gameState,
+                        controller,
+                        settings,
+                        cfg,
+                        const [topLeft, topRight],
+                        isTopRow: true,
+                        slotKey: _topSlotKey,
+                      ),
+
+                      // Chips sit close to the board (12 dp).
+                      const SizedBox(height: _chipBoardGap),
+
+                      // Center square board: 10 dp safe inset + shadow so
+                      // edge tokens (glow/lift included) are never clipped.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: _boardSideInset),
+                        child: AspectRatio(
+                          aspectRatio: 1.0,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(
+                                      isDark ? 0.55 : 0.30),
+                                  blurRadius: 28,
+                                  spreadRadius: 2,
+                                  offset: const Offset(0, 10),
+                                ),
+                                BoxShadow(
+                                  color: cfg.boardInlayLine.withOpacity(
+                                      isDark ? 0.16 : 0.10),
+                                  blurRadius: 42,
+                                  spreadRadius: 1,
+                                  offset: Offset.zero,
+                                ),
+                              ],
+                            ),
+                            child: LudoBoard(
+                              gameState: gameState,
+                              timeScale: settings.timeScale,
+                              themeMode: settings.appTheme,
+                              themeConfig: cfg,
+                              isDark: isDark,
+                              onTokenSelected: (tokenId) {
+                                if (_boardAnimating || _passFreeze) return;
+                                _autoMoveTimer?.cancel();
+                                controller.moveToken(tokenId);
+                              },
+                              onAnimatingChanged: (v) {
+                                if (mounted) {
+                                  setState(() => _boardAnimating = v);
+                                }
+                              },
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+
+                      const SizedBox(height: _chipBoardGap),
+
+                      // Bottom player row with reserved middle dice slot.
+                      _buildPanelRow(
+                        gameState,
+                        controller,
+                        settings,
+                        cfg,
+                        const [bottomLeft, bottomRight],
+                        isTopRow: false,
+                        slotKey: _bottomSlotKey,
+                      ),
+
+                      // Bottom balancing spacer — equals the top one.
+                      const Expanded(flex: 1, child: SizedBox.shrink()),
+                    ],
                   ),
 
-                  // Center Square Board with 7dp safe inset so edge tokens never clip
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 7.0),
-                    child: AspectRatio(
-                      aspectRatio: 1.0,
-                      child: LudoBoard(
-                        gameState: gameState,
+                  // Single gliding large dice (110 dp). Parks in the
+                  // reserved slot beside the active chip; glides over
+                  // 450 ms when the turn passes.
+                  if (_diceCenter != null)
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 450),
+                      curve: Curves.easeInOutCubic,
+                      left: _diceCenter!.dx - _diceSize / 2,
+                      top: _diceCenter!.dy - _diceSize / 2,
+                      width: _diceSize,
+                      height: _diceSize,
+                      child: DiceWidget(
+                        value: gameState.currentDiceRoll,
+                        isRolling: false,
+                        canRoll: canRoll,
+                        activeColor: activePlayer.color,
+                        size: _diceSize,
                         timeScale: settings.timeScale,
+                        isRotated: isDiceRotated,
                         themeMode: settings.appTheme,
                         themeConfig: cfg,
-                        isDark: isDark,
-                        onTokenSelected: (tokenId) {
-                          if (_boardAnimating || _passFreeze) return;
-                          _autoMoveTimer?.cancel();
-                          controller.moveToken(tokenId);
-                        },
-                        onAnimatingChanged: (v) {
-                          if (mounted) {
-                            setState(() => _boardAnimating = v);
-                          }
-                        },
+                        onRoll: () => _primaryAction(gameState, controller),
                       ),
                     ),
-                  ),
-
-                  // Bottom player area (holds Blue & Yellow chips close to board)
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: _chipGap),
-                        child: _buildPanelRow(
-                          gameState,
-                          controller,
-                          settings,
-                          cfg,
-                          const [bottomLeft, bottomRight],
-                          isTopRow: false,
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
-
-              // Single Gliding Large Dice
-              AnimatedAlign(
-                duration: const Duration(milliseconds: 450),
-                curve: Curves.easeInOutCubic,
-                alignment: _getDiceAlignment(activePlayer.color),
-                child: Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: DiceWidget(
-                    value: gameState.currentDiceRoll,
-                    isRolling: false,
-                    canRoll: canRoll,
-                    activeColor: activePlayer.color,
-                    size: diceSize,
-                    timeScale: settings.timeScale,
-                    isRotated: isDiceRotated,
-                    themeMode: settings.appTheme,
-                    themeConfig: cfg,
-                    onRoll: () => _primaryAction(gameState, controller),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-        ),  // Container
-        ],  // outer Stack children
-      ),    // outer Stack
+        ],
+      ),
     );
   }
 
-  /// Row of two player chips.
+  /// Row of two large player chips with a reserved middle dice slot.
+  /// The slot stays empty (same size) when this row is inactive, so chips
+  /// never shift and the overlay dice never overlaps text or borders.
   Widget _buildPanelRow(
     GameState gameState,
     GameController controller,
@@ -501,25 +567,51 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     LuduThemeConfig cfg,
     List<LudoColor> slotColors, {
     required bool isTopRow,
+    GlobalKey? slotKey,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6.0),
-      child: Row(
-        children: [
-          for (int i = 0; i < slotColors.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: SizedBox(
+        height: _rowHeight,
+        child: Row(
+          crossAxisAlignment: isTopRow
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
             Expanded(
               child: _slot(
                 gameState,
                 controller,
                 settings,
                 cfg,
-                slotColors[i],
+                slotColors[0],
+                isTopRow: isTopRow,
+              ),
+            ),
+            const SizedBox(width: _diceGap),
+            // Reserved dice gap: 126 dp wide so the 110 dp dice keeps a
+            // true 12 dp gap to the active chip with room to nudge toward
+            // the active side for a visible within-row glide. Stays the
+            // same size when this row is inactive so chips never shift.
+            Container(
+              key: slotKey,
+              width: _diceSlotWidth,
+              height: _rowHeight,
+              color: Colors.transparent,
+            ),
+            const SizedBox(width: _diceGap),
+            Expanded(
+              child: _slot(
+                gameState,
+                controller,
+                settings,
+                cfg,
+                slotColors[1],
                 isTopRow: isTopRow,
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -574,7 +666,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   /// Slim top bar: back, title, sound, pause menu.
   Widget _buildTopBar(GameState gameState, LuduThemeConfig cfg, bool isDark) {
-    Widget roundButton(IconData icon, String tooltip, VoidCallback onTap) {
+    // Rebuild with real icons (kept as a closure for brevity).
+    Widget btn(IconData icon, String tooltip, VoidCallback onTap) {
       return Tooltip(
         message: tooltip,
         child: Material(
@@ -603,7 +696,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 10.0),
       child: Row(
         children: [
-          roundButton(
+          btn(
             Icons.arrow_back_rounded,
             'Quit game',
             _confirmExit,
@@ -619,13 +712,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ),
           ),
           const Spacer(),
-          roundButton(
+          btn(
             _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
             _isMuted ? 'Unmute' : 'Mute',
             _toggleMute,
           ),
           const SizedBox(width: 8),
-          roundButton(
+          btn(
             Icons.pause_rounded,
             'Menu',
             _openPauseMenu,
@@ -667,6 +760,7 @@ class _PauseAction extends StatelessWidget {
         ),
         onTap: () {
           HapticsService.light();
+          AudioService.playUiClick();
           onTap();
         },
       ),
@@ -674,7 +768,7 @@ class _PauseAction extends StatelessWidget {
   }
 }
 
-/// Paints a subtle themed background: radial vignette + faint gold dust dots.
+/// Tasteful themed background: vignette + subtle pattern + board glow.
 class _BackgroundPainter extends CustomPainter {
   const _BackgroundPainter({
     required this.bgColor,
@@ -688,7 +782,7 @@ class _BackgroundPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Dark vignette edges
+    // Vignette edges.
     final vigPaint = Paint()
       ..shader = RadialGradient(
         center: Alignment.center,
@@ -701,7 +795,17 @@ class _BackgroundPainter extends CustomPainter {
       ).createShader(Offset.zero & size);
     canvas.drawRect(Offset.zero & size, vigPaint);
 
-    // Faint gold-dust dots scattered in top and bottom thirds
+    // Subtle diamond pattern woven across the whole backdrop.
+    final linePaint = Paint()
+      ..color = accentColor.withOpacity(isDark ? 0.05 : 0.035)
+      ..strokeWidth = 1.0;
+    const step = 46.0;
+    for (double x = -size.height; x < size.width + size.height; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), linePaint);
+      canvas.drawLine(Offset(x + size.height, 0), Offset(x, size.height), linePaint);
+    }
+
+    // Faint gold-dust dots scattered in top and bottom thirds.
     final dotPaint = Paint()
       ..color = accentColor.withOpacity(isDark ? 0.07 : 0.04)
       ..style = PaintingStyle.fill;
@@ -720,7 +824,7 @@ class _BackgroundPainter extends CustomPainter {
       }
     }
 
-    // Subtle board pedestal glow — soft gold circle behind board center
+    // Soft board pedestal glow — gold circle behind board center.
     final cx = size.width / 2;
     final cy = size.height / 2;
     final glowPaint = Paint()
@@ -728,7 +832,7 @@ class _BackgroundPainter extends CustomPainter {
         center: Alignment.center,
         radius: 0.5,
         colors: [
-          accentColor.withOpacity(isDark ? 0.10 : 0.06),
+          accentColor.withOpacity(isDark ? 0.12 : 0.08),
           Colors.transparent,
         ],
       ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: size.width * 0.55));

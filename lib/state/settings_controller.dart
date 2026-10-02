@@ -49,6 +49,7 @@ class SettingsController extends StateNotifier<GameSettings> {
   void _applyToBackends(GameSettings s) {
     AudioService.setMuted(!s.sound);
     AudioService.setMasterVolume(s.volume);
+    AudioService.setSoundPack(s.soundPack);
     HapticsService.setEnabled(s.vibration);
   }
 }

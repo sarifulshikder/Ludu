@@ -161,7 +161,7 @@ class BoardPainter extends CustomPainter {
       );
 
       // Deep token wells (2x2 base slots) spaced evenly in base panel
-      final wellR = tu * 0.54;
+      final wellR = tu * 0.72;
       for (final slot in BoardCoordinates.baseSlots[color]!) {
         final c = slot.toOffsetXY(tw, th);
         // Well recessed cavity

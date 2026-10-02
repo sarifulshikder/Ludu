@@ -32,6 +32,8 @@ void main() async {
     // Defaults stand.
   }
   AudioService.setMuted(!initialSettings.sound);
+  AudioService.setMasterVolume(initialSettings.volume);
+  AudioService.setSoundPack(initialSettings.soundPack);
   HapticsService.setEnabled(initialSettings.vibration);
 
   // Warm up the audio backend before the first dice roll.

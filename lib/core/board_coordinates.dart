@@ -25,7 +25,7 @@ class BoardLayout {
     return Offset((col + 0.5) * tw, (row + 0.5) * th);
   }
 
-  static double baseTokenSize(double totalW) => (totalW / gridCount) * 0.88;
+  static double baseTokenSize(double totalW) => (totalW / gridCount) * 1.20;
 }
 
 class BoardPoint {
@@ -172,32 +172,34 @@ class BoardCoordinates {
     LudoColor.blue: BoardPoint(7.95, 7.0),
   };
 
-  /// Base slots: a neat 2x2 grid evenly spaced in each 6x6 base yard
-  /// with clear gaps between slots and no overlapping.
+  /// Base slots: a neat 2x2 grid evenly spaced to fill the inner base
+  /// panel. Slots sit at 1.8 / 4.2 inside each 6x6 yard, so the inner
+  /// panel (10%..90% => 0.6..5.4) holds two 1.20-cell tokens per row at
+  /// ~75% of its width with clear gaps and no overlap.
   static const Map<LudoColor, List<BoardPoint>> baseSlots = {
     LudoColor.red: [
-      BoardPoint(1.5, 1.5),
-      BoardPoint(1.5, 3.5),
-      BoardPoint(3.5, 1.5),
-      BoardPoint(3.5, 3.5),
+      BoardPoint(1.8, 1.8),
+      BoardPoint(1.8, 4.2),
+      BoardPoint(4.2, 1.8),
+      BoardPoint(4.2, 4.2),
     ],
     LudoColor.green: [
-      BoardPoint(1.5, 10.5),
-      BoardPoint(1.5, 12.5),
-      BoardPoint(3.5, 10.5),
-      BoardPoint(3.5, 12.5),
+      BoardPoint(1.8, 10.8),
+      BoardPoint(1.8, 13.2),
+      BoardPoint(4.2, 10.8),
+      BoardPoint(4.2, 13.2),
     ],
     LudoColor.yellow: [
-      BoardPoint(10.5, 10.5),
-      BoardPoint(10.5, 12.5),
-      BoardPoint(12.5, 10.5),
-      BoardPoint(12.5, 12.5),
+      BoardPoint(10.8, 10.8),
+      BoardPoint(10.8, 13.2),
+      BoardPoint(13.2, 10.8),
+      BoardPoint(13.2, 13.2),
     ],
     LudoColor.blue: [
-      BoardPoint(10.5, 1.5),
-      BoardPoint(10.5, 3.5),
-      BoardPoint(12.5, 1.5),
-      BoardPoint(12.5, 3.5),
+      BoardPoint(10.8, 1.8),
+      BoardPoint(10.8, 4.2),
+      BoardPoint(13.2, 1.8),
+      BoardPoint(13.2, 4.2),
     ],
   };
 

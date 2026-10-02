@@ -10,11 +10,19 @@ import '../../services/haptics_service.dart';
 
 /// Large 3D Pawn Piece styled for the active theme.
 ///
-/// * Almost fills a cell (~90–95% of cell width).
-/// * Small lift on movable tokens + golden/neon pulsing aura.
-/// * Jewel gloss for Royal Gold, glowing frosted acrylic for Neon Glass,
-///   lathe-turned wood with brass collar for Wooden Luxe.
-/// * Color-blind double-coding: unique emblem glyph (▲ ● ★ ■).
+/// Polish pass:
+/// * Fills ~90% of a path cell, centered, never overlapping neighbours
+///   (the board sizes clusters to fit — see [LudoBoard]).
+/// * Strong contrast on every cell color: bright ivory/gold outer rim,
+///   soft drop shadow, glossy highlight.
+/// * Color-blind double-coding: each color keeps a distinct emblem shape
+///   (Red ▲ triangle, Teal ● circle, Amber ★ star, Blue ■ square) drawn
+///   above the readable token number.
+/// * Movable tokens: gentle pulse plus a bright ring.
+/// * [animLift] (0..1) raises the piece mid-hop and shrinks its shadow;
+///   [squash] (0..1) applies a tiny landing squash. Both are driven by the
+///   board's hop animation with hardware-accelerated transforms (no layout
+///   work per frame).
 class TokenWidget extends StatefulWidget {
   final Token token;
   final double size;
@@ -23,6 +31,12 @@ class TokenWidget extends StatefulWidget {
   final VoidCallback? onTap;
   final AppThemeMode themeMode;
   final ThemePlayerColor? themePlayerColor;
+
+  /// 0..1 lift during a hop (shadow shrinks as this grows).
+  final double animLift;
+
+  /// 0..1 landing squash.
+  final double squash;
 
   const TokenWidget({
     super.key,
@@ -33,6 +47,8 @@ class TokenWidget extends StatefulWidget {
     this.onTap,
     this.themeMode = AppThemeMode.royalGold,
     this.themePlayerColor,
+    this.animLift = 0.0,
+    this.squash = 0.0,
   });
 
   @override
@@ -59,7 +75,7 @@ class _TokenWidgetState extends State<TokenWidget>
       vsync: this,
       duration: const Duration(milliseconds: 720),
     );
-    _pulseScale = Tween<double>(begin: 1.0, end: 1.10).animate(
+    _pulseScale = Tween<double>(begin: 1.0, end: 1.08).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     if (widget.isMovable) _startPulse();
@@ -102,27 +118,39 @@ class _TokenWidgetState extends State<TokenWidget>
           animation: _pulseController,
           builder: (context, child) {
             final bounce = widget.isMovable ? _pulseScale.value : 1.0;
+            final lift = widget.animLift.clamp(0.0, 1.0);
+            final squash = widget.squash.clamp(0.0, 1.0);
+            // Hop lift: rise + slight grow; landing: tiny vertical squash
+            // with compensating horizontal stretch (juice, no layout work).
+            final hopScale = 1.0 + lift * 0.10;
+            final sx = bounce * hopScale * (1.0 + squash * 0.06);
+            final sy = bounce * hopScale * (1.0 - squash * 0.10);
             return Transform.scale(
-              scale: bounce,
-              // Small lift on movable tokens
+              scale: 1.0,
               child: Transform.translate(
-                offset: widget.isMovable
-                    ? const Offset(0, -3.5)
-                    : Offset.zero,
-                child: SizedBox(
-                  width: w,
-                  height: w,
-                  child: CustomPaint(
-                    size: Size(w, w),
-                    painter: _PawnPainter(
-                      color: widget.token.color,
-                      themePlayerColor: widget.themePlayerColor,
-                      themeMode: widget.themeMode,
-                      isHome: widget.token.isHome,
-                      number: widget.token.id + 1,
-                      selectable: widget.isMovable,
-                      isLastMoved: widget.isLastMoved,
-                      shadow: 0.38,
+                offset: Offset(
+                  0,
+                  (widget.isMovable ? -3.5 : 0.0) - lift * w * 0.16,
+                ),
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.diagonal3Values(sx, sy, 1.0),
+                  child: SizedBox(
+                    width: w,
+                    height: w,
+                    child: CustomPaint(
+                      size: Size(w, w),
+                      painter: _PawnPainter(
+                        color: widget.token.color,
+                        themePlayerColor: widget.themePlayerColor,
+                        themeMode: widget.themeMode,
+                        isHome: widget.token.isHome,
+                        number: widget.token.id + 1,
+                        selectable: widget.isMovable,
+                        isLastMoved: widget.isLastMoved,
+                        shadow: 0.38,
+                        animLift: lift,
+                      ),
                     ),
                   ),
                 ),
@@ -154,6 +182,7 @@ class _PawnPainter extends CustomPainter {
   final bool selectable;
   final bool isLastMoved;
   final double shadow;
+  final double animLift;
 
   _PawnPainter({
     required this.color,
@@ -164,6 +193,7 @@ class _PawnPainter extends CustomPainter {
     required this.selectable,
     this.isLastMoved = false,
     required this.shadow,
+    this.animLift = 0.0,
   });
 
   @override
@@ -181,9 +211,10 @@ class _PawnPainter extends CustomPainter {
 
     final double coinR = w * 0.47;
 
-    // 1. Ground Drop Shadow (larger & softer when lifted)
-    final shadowScale = selectable ? 1.25 : 1.0;
-    final shadowY = selectable ? cy + w * 0.08 : cy + w * 0.035;
+    // 1. Ground drop shadow — softer, smaller and fainter while lifted.
+    final shadowScale = (selectable ? 1.25 : 1.0) * (1.0 - animLift * 0.35);
+    final shadowY = cy + w * 0.035 + (selectable ? w * 0.045 : 0.0) -
+        animLift * w * 0.02;
     canvas.drawOval(
       Rect.fromCenter(
         center: Offset(cx, shadowY),
@@ -191,7 +222,8 @@ class _PawnPainter extends CustomPainter {
         height: coinR * 0.55 * shadowScale,
       ),
       Paint()
-        ..color = Colors.black.withOpacity(selectable ? 0.45 : shadow)
+        ..color = Colors.black
+            .withOpacity((selectable ? 0.45 : shadow) * (1.0 - animLift * 0.45))
         ..maskFilter =
             MaskFilter.blur(BlurStyle.normal, w * (selectable ? 0.12 : 0.06)),
     );
@@ -208,7 +240,7 @@ class _PawnPainter extends CustomPainter {
       );
     }
 
-    // 3. Selectable pulsing aura
+    // 3. Selectable pulsing aura + bright ring (instantly visible movables)
     if (selectable) {
       canvas.drawCircle(
         center,
@@ -227,7 +259,17 @@ class _PawnPainter extends CustomPainter {
       );
     }
 
-    // 4. Outer Minted Coin Bevel Rim (Metallic Gold / Cyber Neon / Polished Brass)
+    // 4. Bright ivory outer rim — guarantees contrast on every cell color.
+    canvas.drawCircle(
+      center,
+      coinR * 1.0,
+      Paint()
+        ..color = const Color(0xFFFFF8E7).withOpacity(0.98)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.6, w * 0.038),
+    );
+
+    // 5. Outer minted coin bevel rim (gold / neon / brass).
     final rimColors = themeMode == AppThemeMode.neonGlass
         ? [
             const Color(0xFFE0F7FA),
@@ -255,20 +297,20 @@ class _PawnPainter extends CustomPainter {
         stops: const [0.0, 0.35, 0.70, 1.0],
         transform: const GradientRotation(-math.pi / 4),
       ).createShader(Rect.fromCircle(center: center, radius: coinR));
-    canvas.drawCircle(center, coinR, outerRimPaint);
+    canvas.drawCircle(center, coinR * 0.96, outerRimPaint);
 
     // Coin serrated / grooved milled rim ring
     canvas.drawCircle(
       center,
-      coinR * 0.93,
+      coinR * 0.89,
       Paint()
         ..color = Colors.white.withOpacity(0.55)
         ..style = PaintingStyle.stroke
         ..strokeWidth = math.max(1.0, w * 0.022),
     );
 
-    // 5. Stepped Recessed Coin Face (Inner Bevel)
-    final innerR = coinR * 0.85;
+    // 6. Stepped recessed coin face (inner bevel)
+    final innerR = coinR * 0.82;
     canvas.drawCircle(
       center,
       innerR,
@@ -283,8 +325,8 @@ class _PawnPainter extends CustomPainter {
         ..strokeWidth = 1.0,
     );
 
-    // 6. Domed Jewel Core / Enamel Face
-    final faceR = coinR * 0.82;
+    // 7. Domed jewel core / enamel face
+    final faceR = coinR * 0.79;
     final faceRect = Rect.fromCircle(center: center, radius: faceR);
     final coreGradient = RadialGradient(
       colors: [highlight, glow, primary, dark],
@@ -306,7 +348,7 @@ class _PawnPainter extends CustomPainter {
         ..strokeWidth = 1.0,
     );
 
-    // 7. Embossed Center Emblem (Crown + Number / Star)
+    // 8. Color-blind emblem shape + readable token number.
     if (number == 0) {
       // Pin avatar: centered royal crown
       _drawRoyalCrown(canvas, center, coinR * 0.50, accentRing);
@@ -316,13 +358,13 @@ class _PawnPainter extends CustomPainter {
       _star(canvas, center, coinR * 0.30,
           Paint()..color = Colors.white.withOpacity(0.90));
     } else {
-      // In-play coin: Embossed Royal Crown at top + Token Number at center
-      _drawRoyalCrown(
-          canvas, Offset(cx, cy - coinR * 0.22), coinR * 0.30, accentRing);
-      _number(canvas, Offset(cx, cy + coinR * 0.20), '$number', w);
+      // Distinct per-color emblem at top, number stays large and readable
+      // even at 48-60% stack sizes (floor keeps tiny tokens legible).
+      _drawEmblem(canvas, Offset(cx, cy - coinR * 0.30), coinR * 0.30);
+      _number(canvas, Offset(cx, cy + coinR * 0.24), '$number', w);
     }
 
-    // 8. Glossy Specular Curved Arc Highlight (across upper left of coin)
+    // 9. Glossy specular curved arc highlight (across upper left of coin)
     canvas.save();
     canvas.clipRRect(
         RRect.fromRectAndRadius(faceRect, Radius.circular(faceR)));
@@ -347,6 +389,51 @@ class _PawnPainter extends CustomPainter {
         ).createShader(faceRect),
     );
     canvas.restore();
+  }
+
+  /// Distinct shape per color so hue is never the only cue.
+  void _drawEmblem(Canvas canvas, Offset c, double size) {
+    final Paint fill = Paint()..color = Colors.white.withOpacity(0.95);
+    final Paint shadowP = Paint()..color = Colors.black.withOpacity(0.35);
+    final double s = size;
+    switch (color) {
+      case LudoColor.red:
+        // ▲ triangle
+        final path = Path()
+          ..moveTo(c.dx, c.dy - s * 0.55)
+          ..lineTo(c.dx + s * 0.55, c.dy + s * 0.40)
+          ..lineTo(c.dx - s * 0.55, c.dy + s * 0.40)
+          ..close();
+        canvas.drawPath(path.shift(const Offset(0, 1.0)), shadowP);
+        canvas.drawPath(path, fill);
+        break;
+      case LudoColor.green:
+        // ● circle
+        canvas.drawCircle(c + const Offset(0, 1.0), s * 0.42, shadowP);
+        canvas.drawCircle(c, s * 0.42, fill);
+        canvas.drawCircle(
+            c,
+            s * 0.22,
+            Paint()
+              ..color = Colors.black.withOpacity(0.25)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.0);
+        break;
+      case LudoColor.yellow:
+        // ★ star
+        _star(canvas, c + const Offset(0, 1.0), s * 0.55, shadowP);
+        _star(canvas, c, s * 0.52, fill);
+        break;
+      case LudoColor.blue:
+        // ■ square
+        final r = Rect.fromCenter(center: c, width: s * 0.80, height: s * 0.80);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(r, Radius.circular(s * 0.12)).shift(const Offset(0, 1.0)),
+            shadowP);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(r, Radius.circular(s * 0.12)), fill);
+        break;
+    }
   }
 
   void _drawRoyalCrown(Canvas canvas, Offset c, double size, Color col) {
@@ -396,12 +483,14 @@ class _PawnPainter extends CustomPainter {
   }
 
   void _number(Canvas canvas, Offset centre, String value, double w) {
+    // Floor keeps stacked (48-60%) tokens legible.
+    final double fs = math.max(9.0, w * 0.30);
     final face = TextPainter(
       text: TextSpan(
         text: value,
         style: TextStyle(
           color: Colors.white,
-          fontSize: w * 0.28,
+          fontSize: fs,
           fontWeight: FontWeight.w900,
           height: 1.0,
           shadows: const [
@@ -446,7 +535,8 @@ class _PawnPainter extends CustomPainter {
       old.isHome != isHome ||
       old.number != number ||
       old.selectable != selectable ||
-      old.isLastMoved != isLastMoved;
+      old.isLastMoved != isLastMoved ||
+      old.animLift != animLift;
 }
 
 /// Compact pawn avatar for player chips and cards.

@@ -65,8 +65,8 @@ class PlayerPanel extends StatelessWidget {
 
     Widget chipContent = AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      height: 70,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: cfg.surfaceCard,
         gradient: LinearGradient(
@@ -112,11 +112,11 @@ class PlayerPanel extends StatelessWidget {
             // Pawn avatar icon
             PinAvatar(
               color: color,
-              size: 26,
+              size: 34,
               isDark: isDark,
               themePlayerColor: themeColor,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             // Name + team badge + progress pills
             Expanded(
               child: Column(
@@ -131,7 +131,7 @@ class PlayerPanel extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 12.0,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.2,
                             color: isDark

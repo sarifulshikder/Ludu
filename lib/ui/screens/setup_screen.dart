@@ -6,10 +6,12 @@ import '../../models/game_settings.dart';
 import '../../models/game_state.dart';
 import '../../models/ludo_color.dart';
 import '../../models/player.dart';
+import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 import '../../state/game_controller.dart';
 import '../../state/settings_controller.dart';
 import 'rules_screen.dart';
+import 'sound_test_screen.dart';
 
 /// Home screen (§10): Start Game, player count (2/3/4), player names and
 /// colors, resume-a-saved-game, rules and full settings.
@@ -747,6 +749,72 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                               settings.copyWith(sound: v));
                         },
                       ),
+                      // Sound pack (§C): Wood / Glass / Minimal.
+                      Padding(
+                        padding: const EdgeInsets.only(
+                            left: 0, right: 0, top: 4, bottom: 6),
+                        child: Row(
+                          children: [
+                            for (final pack in SoundPack.values)
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 3.0),
+                                  child: ChoiceChip(
+                                    label: Text(pack.displayName),
+                                    selected:
+                                        settings.soundPack == pack,
+                                    onSelected: (_) {
+                                      HapticsService.selection();
+                                      settingsUpdater.update(settings
+                                          .copyWith(soundPack: pack));
+                                      AudioService.playUiClick();
+                                    },
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      _SettingsSwitch(
+                        title: 'Background music',
+                        subtitle: 'Ambient layer (off by default)',
+                        icon: settings.backgroundMusic
+                            ? Icons.music_note_rounded
+                            : Icons.music_off_rounded,
+                        value: settings.backgroundMusic,
+                        onChanged: (v) {
+                          HapticsService.selection();
+                          settingsUpdater.update(settings.copyWith(
+                              backgroundMusic: v));
+                        },
+                      ),
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(top: 2, bottom: 4),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              HapticsService.selection();
+                              AudioService.playUiClick();
+                              Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    const SoundTestScreen(),
+                              ));
+                            },
+                            icon: const Icon(
+                                Icons.graphic_eq_rounded,
+                                size: 20),
+                            label: const Text(
+                              'Sound test — listen to each cue',
+                              style:
+                                  TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ),
+                      ),
                       _SettingsSwitch(
                         title: 'Vibration',
                         subtitle:
@@ -880,6 +948,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               ElevatedButton(
                 onPressed: () {
                   HapticsService.medium();
+                  AudioService.playUiClick();
                   final names = List.generate(
                     _teamMode ? 4 : _playerCount,
                     (i) => _nameControllers[i].text.trim().isEmpty

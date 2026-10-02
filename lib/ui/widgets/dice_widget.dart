@@ -9,12 +9,13 @@ import '../../models/ludo_color.dart';
 import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 
-/// Grand 3D Single Dice (96–110 dp).
+/// Grand 3D Single Dice (~110 dp) with a natural tumble.
 ///
-/// * Only ONE large dice exists on screen.
-/// * Glides smoothly to the active player's corner.
-/// * Null [value] draws a neutral face before the roll.
-/// * Pulses gently while waiting for a tap.
+/// * 3D tumble with natural deceleration (fast at first, easing out),
+///   ~0.9 s, settling with one small bounce.
+/// * The final face is set exactly once at settle — no flicker or jump
+///   when switching from the rolling shuffle to the result.
+/// * Null [value] draws a neutral emblem face with a gentle pulse.
 /// * Supports face-to-face rotation [isRotated].
 /// * Styled to match the active theme (Royal Gold, Neon Glass, Wooden Luxe).
 class DiceWidget extends StatefulWidget {
@@ -51,7 +52,8 @@ class _DiceWidgetState extends State<DiceWidget>
     with TickerProviderStateMixin {
   late AnimationController _tossController;
   late Animation<double> _jump;
-  late Animation<double> _wobble;
+  late Animation<double> _spin;
+  late Animation<double> _tilt;
   late Animation<double> _punch;
 
   /// Gentle attract pulse while the dice awaits a tap.
@@ -64,8 +66,11 @@ class _DiceWidgetState extends State<DiceWidget>
 
   static bool get _inTest => isFlutterTest;
 
-  Duration get _tossDuration => Duration(
-      milliseconds: (1100 * widget.timeScale).round().clamp(400, 2000));
+  /// 0.8-1.0 s tumble (spec), scaled by the animation-speed setting.
+  Duration get _tossDuration {
+    final ms = (900 * widget.timeScale).round().clamp(500, 1200);
+    return Duration(milliseconds: ms);
+  }
 
   @override
   void initState() {
@@ -75,63 +80,84 @@ class _DiceWidgetState extends State<DiceWidget>
       vsync: this,
       duration: _tossDuration,
     );
-    _jump = TweenSequence<double>([
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 0.0, end: -22.0)
-              .chain(CurveTween(curve: Curves.easeOut)),
-          weight: 22),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: -22.0, end: 0.0)
-              .chain(CurveTween(curve: Curves.easeIn)),
-          weight: 26),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 0.0, end: -12.0)
-              .chain(CurveTween(curve: Curves.easeOut)),
-          weight: 22),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: -12.0, end: 0.0)
-              .chain(CurveTween(curve: Curves.bounceOut)),
-          weight: 30),
-    ]).animate(_tossController);
-
-    _wobble = TweenSequence<double>([
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 0.0, end: 0.24), weight: 25),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 0.24, end: -0.20), weight: 25),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: -0.20, end: 0.12), weight: 25),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 0.12, end: 0.0), weight: 25),
-    ]).animate(CurvedAnimation(parent: _tossController, curve: Curves.easeInOut));
-
-    _punch = TweenSequence<double>([
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 1.0, end: 1.18), weight: 55),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 1.18, end: 1.0)
-              .chain(CurveTween(curve: Curves.elasticOut)),
-          weight: 45),
-    ]).animate(_tossController);
+    _buildTossCurves();
 
     _idleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
     );
-    _idlePulse = Tween<double>(begin: 1.0, end: 1.06).animate(
+    _idlePulse = Tween<double>(begin: 1.0, end: 1.05).animate(
       CurvedAnimation(parent: _idleController, curve: Curves.easeInOut),
     );
     _syncIdlePulse();
 
     _tossController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
+        // Stop the shuffle first, then paint the true result in the same
+        // frame — the final face never flickers or jumps.
         _shuffleTimer?.cancel();
-        setState(() => _displayValue = widget.value);
+        _shuffleTimer = null;
+        if (mounted) setState(() => _displayValue = widget.value);
         HapticsService.light();
         AudioService.playDiceResult();
         _syncIdlePulse();
       }
     });
+  }
+
+  /// Decelerating 3D tumble: fast spin up front easing out, one small
+  /// bounce at the very end.
+  void _buildTossCurves() {
+    // Vertical: launch, fall, single small bounce, settle.
+    _jump = TweenSequence<double>([
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 0.0, end: -26.0)
+              .chain(CurveTween(curve: Curves.easeOut)),
+          weight: 24),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: -26.0, end: 0.0)
+              .chain(CurveTween(curve: Curves.easeIn)),
+          weight: 30),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 0.0, end: -11.0)
+              .chain(CurveTween(curve: Curves.easeOut)),
+          weight: 18),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: -11.0, end: 0.0)
+              .chain(CurveTween(curve: Curves.bounceOut)),
+          weight: 28),
+    ]).animate(_tossController);
+
+    // In-plane spin: two full turns, heavily front-loaded (ease-out).
+    _spin = Tween<double>(begin: 0.0, end: 4 * math.pi).animate(
+      CurvedAnimation(parent: _tossController, curve: _DecelerateCurve()),
+    );
+
+    // Out-of-plane tilt for a 3D feel: tips over then rights itself.
+    _tilt = TweenSequence<double>([
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 0.0, end: 0.55)
+              .chain(CurveTween(curve: Curves.easeOut)),
+          weight: 45),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 0.55, end: -0.18)
+              .chain(CurveTween(curve: Curves.easeInOut)),
+          weight: 30),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: -0.18, end: 0.0)
+              .chain(CurveTween(curve: Curves.easeOut)),
+          weight: 25),
+    ]).animate(_tossController);
+
+    // Punch scale with a soft elastic settle.
+    _punch = TweenSequence<double>([
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 1.0, end: 1.14), weight: 50),
+      TweenSequenceItem(
+          tween: Tween<double>(begin: 1.14, end: 1.0)
+              .chain(CurveTween(curve: Curves.elasticOut)),
+          weight: 50),
+    ]).animate(_tossController);
   }
 
   void _syncIdlePulse() {
@@ -161,9 +187,11 @@ class _DiceWidgetState extends State<DiceWidget>
   void _handleTap() {
     if (!widget.canRoll || _tossController.isAnimating) return;
     HapticsService.medium();
+    AudioService.playUiClick();
     _shuffleTimer?.cancel();
-    final interval = (120 * widget.timeScale).round().clamp(60, 200);
+    final interval = (110 * widget.timeScale).round().clamp(60, 200);
     _shuffleTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
+      if (!mounted) return;
       setState(() => _displayValue = _random.nextInt(6) + 1);
     });
     _tossController.forward(from: 0.0);
@@ -196,7 +224,7 @@ class _DiceWidgetState extends State<DiceWidget>
               widget.canRoll &&
               _idleController.isAnimating;
           final idleScale = idle ? _idlePulse.value : 1.0;
-          final idleLift = idle ? -3.5 * (_idlePulse.value - 1.0) / 0.06 : 0.0;
+          final idleLift = idle ? -3.5 * (_idlePulse.value - 1.0) / 0.05 : 0.0;
 
           // Theme styling colors
           final bodyColors = widget.themeMode == AppThemeMode.neonGlass
@@ -209,100 +237,106 @@ class _DiceWidgetState extends State<DiceWidget>
               ? themeColor.primary
               : cfg.diceBorderColor;
 
+          final double airTime =
+              tossing ? (_jump.value.abs() / 26.0).clamp(0.0, 1.0) : 0.0;
+
           return Transform.translate(
             offset: Offset(0, (tossing ? _jump.value : 0.0) + idleLift),
-            child: Transform.rotate(
-              angle: tossing ? _wobble.value : 0.0,
-              child: Transform.scale(
-                scale: (tossing ? _punch.value : 1.0) * idleScale,
-                child: Container(
-                  width: s,
-                  height: s,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: bodyColors,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(s * 0.22),
-                    border: Border.all(
-                      color: borderColor,
-                      width: widget.canRoll ? 3.5 : 1.8,
-                    ),
-                    boxShadow: [
-                      if (widget.canRoll)
-                        BoxShadow(
-                          color: themeColor.primary.withOpacity(0.55),
-                          blurRadius: 28,
-                          spreadRadius: 3,
-                          offset: const Offset(0, 6),
-                        ),
+            child: Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.0018)
+                ..rotateX(tossing ? _tilt.value : 0.0)
+                ..rotateZ(tossing ? _spin.value : 0.0)
+                ..scale((tossing ? _punch.value : 1.0) * idleScale),
+              child: Container(
+                width: s,
+                height: s,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: bodyColors,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(s * 0.22),
+                  border: Border.all(
+                    color: borderColor,
+                    width: widget.canRoll ? 3.5 : 1.8,
+                  ),
+                  boxShadow: [
+                    if (widget.canRoll)
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.42),
-                        blurRadius: 14,
-                        offset: Offset(0, 5 + (tossing ? 6 : 0)),
+                        color: themeColor.primary
+                            .withOpacity(0.55 * (1.0 - airTime * 0.4)),
+                        blurRadius: 28,
+                        spreadRadius: 3,
+                        offset: const Offset(0, 6),
                       ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      // Specular gloss reflection across top
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.42 - airTime * 0.12),
+                      blurRadius: 14 - airTime * 5,
+                      offset: Offset(0, 5 + (tossing ? 6 : 0)),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    // Specular gloss reflection across top
+                    Positioned(
+                      left: s * 0.10,
+                      right: s * 0.10,
+                      top: s * 0.06,
+                      height: s * 0.26,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.75),
+                              Colors.transparent
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(s * 0.12),
+                        ),
+                      ),
+                    ),
+                    // Pips or neutral face
+                    Center(
+                      child: SizedBox(
+                        width: s * 0.74,
+                        height: s * 0.74,
+                        child: CustomPaint(
+                          painter: _DiceFacePainter(
+                            _displayValue,
+                            themeColor,
+                            cfg,
+                            widget.themeMode,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Active turn glowing indicator dot
+                    if (widget.canRoll)
                       Positioned(
-                        left: s * 0.10,
-                        right: s * 0.10,
-                        top: s * 0.06,
-                        height: s * 0.26,
+                        right: s * 0.09,
+                        top: s * 0.09,
                         child: Container(
+                          width: s * 0.12,
+                          height: s * 0.12,
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.white.withOpacity(0.75),
-                                Colors.transparent
-                              ],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                            ),
-                            borderRadius: BorderRadius.circular(s * 0.12),
+                            color: themeColor.primary,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: themeColor.primary.withOpacity(0.9),
+                                blurRadius: 8,
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      // Pips or neutral face
-                      Center(
-                        child: SizedBox(
-                          width: s * 0.74,
-                          height: s * 0.74,
-                          child: CustomPaint(
-                            painter: _DiceFacePainter(
-                              _displayValue,
-                              themeColor,
-                              cfg,
-                              widget.themeMode,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Active turn glowing indicator dot
-                      if (widget.canRoll)
-                        Positioned(
-                          right: s * 0.09,
-                          top: s * 0.09,
-                          child: Container(
-                            width: s * 0.12,
-                            height: s * 0.12,
-                            decoration: BoxDecoration(
-                              color: themeColor.primary,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: themeColor.primary.withOpacity(0.9),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -320,6 +354,13 @@ class _DiceWidgetState extends State<DiceWidget>
 
     return diceWidget;
   }
+}
+
+/// Fast at first, easing out — models a real dice losing energy.
+class _DecelerateCurve extends Curve {
+  const _DecelerateCurve();
+  @override
+  double transformInternal(double t) => 1.0 - math.pow(1.0 - t, 3.0);
 }
 
 class _DiceFacePainter extends CustomPainter {

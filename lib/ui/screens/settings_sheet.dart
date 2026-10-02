@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/ludu_theme.dart';
 import '../../models/game_settings.dart';
+import '../../services/audio_service.dart';
 import '../../services/haptics_service.dart';
 import '../../state/settings_controller.dart';
 import 'rules_screen.dart';
+import 'sound_test_screen.dart';
 
 /// In-game settings: theme selector, face-to-face mode, sound + volume,
 /// vibration, animation speed, auto-move, block rule, rules & match restart.
@@ -172,6 +174,134 @@ class SettingsSheet extends ConsumerWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+
+            // --- Sound Pack (Wood / Glass / Minimal) ---
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 4),
+              child: Text(
+                'SOUND PACK',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                for (final pack in SoundPack.values)
+                  Expanded(
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 3.0),
+                      child: InkWell(
+                        onTap: settings.sound
+                            ? () {
+                                update(
+                                    settings.copyWith(soundPack: pack));
+                                AudioService.playUiClick();
+                              }
+                            : null,
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: cfg.surfaceCard,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: settings.soundPack == pack
+                                  ? cfg.boardInlayLine
+                                  : cfg.surfaceCardBorder,
+                              width:
+                                  settings.soundPack == pack ? 2.2 : 1.0,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                pack.displayName,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight:
+                                      settings.soundPack == pack
+                                          ? FontWeight.w900
+                                          : FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                pack == SoundPack.wood
+                                    ? '🪵'
+                                    : pack == SoundPack.glass
+                                        ? '🔮'
+                                        : '🍃',
+                                style: const TextStyle(fontSize: 18),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 2),
+              child: Text(
+                settings.soundPack.subtitle,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ),
+
+            // --- Background Music (OFF by default) ---
+            _tile(
+              title: 'Background music',
+              subtitle: 'Ambient layer (off by default)',
+              icon: settings.backgroundMusic
+                  ? Icons.music_note_rounded
+                  : Icons.music_off_rounded,
+              value: settings.backgroundMusic,
+              onChanged: (v) =>
+                  update(settings.copyWith(backgroundMusic: v)),
+            ),
+
+            // --- Sound Test ---
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 6),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    HapticsService.selection();
+                    AudioService.playUiClick();
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => const SoundTestScreen(),
+                    ));
+                  },
+                  icon: const Icon(Icons.graphic_eq_rounded, size: 20),
+                  label: const Text(
+                    'Sound test — listen to each cue',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    side: BorderSide(
+                        color: cfg.boardInlayLine, width: 1.5),
+                    foregroundColor: cfg.boardInlayLine,
+                  ),
                 ),
               ),
             ),

@@ -16,6 +16,51 @@ enum AppThemeMode {
   woodenLuxe,
 }
 
+/// Premium sound packs (§C): Wood (default, warm), Glass (bright),
+/// Minimal (soft and subtle).
+enum SoundPack {
+  wood,
+  glass,
+  minimal,
+}
+
+extension SoundPackExt on SoundPack {
+  String get displayName {
+    switch (this) {
+      case SoundPack.wood:
+        return 'Wood';
+      case SoundPack.glass:
+        return 'Glass';
+      case SoundPack.minimal:
+        return 'Minimal';
+    }
+  }
+
+  String get subtitle {
+    switch (this) {
+      case SoundPack.wood:
+        return 'Warm wooden tocks (default)';
+      case SoundPack.glass:
+        return 'Bright glassy shimmer';
+      case SoundPack.minimal:
+        return 'Soft and subtle';
+    }
+  }
+
+  /// Asset prefix for this pack. Wood lives at the root for
+  /// backward compatibility with older saves/clients.
+  String get assetPrefix {
+    switch (this) {
+      case SoundPack.wood:
+        return 'audio/';
+      case SoundPack.glass:
+        return 'audio/glass/';
+      case SoundPack.minimal:
+        return 'audio/minimal/';
+    }
+  }
+}
+
 extension AppThemeModeExt on AppThemeMode {
   String get displayName {
     switch (this) {
@@ -73,6 +118,13 @@ class GameSettings {
   /// Dark mode (true) or light mode (false). Default false (Light mode).
   final bool isDark;
 
+  /// Active premium sound pack. Default Wood.
+  final SoundPack soundPack;
+
+  /// Background music toggle. Always OFF by default (no music asset ships;
+  /// the toggle is reserved for a future ambient layer).
+  final bool backgroundMusic;
+
   const GameSettings({
     this.autoMove = true,
     this.blockRule = false,
@@ -84,6 +136,8 @@ class GameSettings {
     this.faceToFaceMode = false,
     this.appTheme = AppThemeMode.royalGold,
     this.isDark = false,
+    this.soundPack = SoundPack.wood,
+    this.backgroundMusic = false,
   });
 
   /// Duration multiplier for hop/dice animations (1.0 normal, 0.55 fast).
@@ -100,6 +154,8 @@ class GameSettings {
     bool? faceToFaceMode,
     AppThemeMode? appTheme,
     bool? isDark,
+    SoundPack? soundPack,
+    bool? backgroundMusic,
   }) {
     return GameSettings(
       autoMove: autoMove ?? this.autoMove,
@@ -112,6 +168,8 @@ class GameSettings {
       faceToFaceMode: faceToFaceMode ?? this.faceToFaceMode,
       appTheme: appTheme ?? this.appTheme,
       isDark: isDark ?? this.isDark,
+      soundPack: soundPack ?? this.soundPack,
+      backgroundMusic: backgroundMusic ?? this.backgroundMusic,
     );
   }
 
@@ -126,6 +184,8 @@ class GameSettings {
         'faceToFaceMode': faceToFaceMode,
         'appTheme': appTheme.name,
         'isDark': isDark,
+        'soundPack': soundPack.name,
+        'backgroundMusic': backgroundMusic,
       };
 
   factory GameSettings.fromJson(Map<String, dynamic> json) {
@@ -143,6 +203,11 @@ class GameSettings {
         orElse: () => AppThemeMode.royalGold,
       ),
       isDark: json['isDark'] as bool? ?? false,
+      soundPack: SoundPack.values.firstWhere(
+        (t) => t.name == (json['soundPack'] as String?),
+        orElse: () => SoundPack.wood,
+      ),
+      backgroundMusic: json['backgroundMusic'] as bool? ?? false,
     );
   }
 
@@ -160,7 +225,9 @@ class GameSettings {
           fastAnimation == other.fastAnimation &&
           faceToFaceMode == other.faceToFaceMode &&
           appTheme == other.appTheme &&
-          isDark == other.isDark;
+          isDark == other.isDark &&
+          soundPack == other.soundPack &&
+          backgroundMusic == other.backgroundMusic;
 
   @override
   int get hashCode => Object.hash(
@@ -174,5 +241,7 @@ class GameSettings {
         faceToFaceMode,
         appTheme,
         isDark,
+        soundPack,
+        backgroundMusic,
       );
 }
