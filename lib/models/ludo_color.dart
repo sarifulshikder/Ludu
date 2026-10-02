@@ -81,7 +81,7 @@ extension LudoColorExt on LudoColor {
       case LudoColor.green:
         return const Color(0xFF00A57F); // Bluish-green lagoon
       case LudoColor.yellow:
-        return const Color(0xFFD9A400); // Deep solar amber (darkened for contrast)
+        return const Color(0xFFE5A900); // Pure rich gold
       case LudoColor.blue:
         return const Color(0xFF1976D2); // Ultramarine abyss
     }
@@ -94,7 +94,7 @@ extension LudoColorExt on LudoColor {
       case LudoColor.green:
         return const Color(0xFF007A5E);
       case LudoColor.yellow:
-        return const Color(0xFF9A7600);
+        return const Color(0xFFA67C00); // Deep golden bronze
       case LudoColor.blue:
         return const Color(0xFF0D47A1);
     }
@@ -107,7 +107,7 @@ extension LudoColorExt on LudoColor {
       case LudoColor.green:
         return const Color(0xFF5EEAD4);
       case LudoColor.yellow:
-        return const Color(0xFFFFE066);
+        return const Color(0xFFFFDF6D); // Bright gold glow
       case LudoColor.blue:
         return const Color(0xFF7FB8FF);
     }
@@ -121,7 +121,7 @@ extension LudoColorExt on LudoColor {
       case LudoColor.green:
         return const Color(0xFFCCFBF1);
       case LudoColor.yellow:
-        return const Color(0xFFFFF3C4);
+        return const Color(0xFFFFF9DB); // Pale gold specular highlight
       case LudoColor.blue:
         return const Color(0xFFD6E9FF);
     }

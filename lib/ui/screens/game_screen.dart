@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -305,16 +306,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   /// Calculates the 4 corner alignment targets for the single gliding dice.
+  /// Values tuned so dice appears next to active chip, not overlapping it.
   Alignment _getDiceAlignment(LudoColor color) {
     switch (color) {
       case LudoColor.red:
-        return const Alignment(-0.76, -0.74);
+        // Top-left chip → dice to the left of the chip row
+        return const Alignment(-0.92, -0.88);
       case LudoColor.green:
-        return const Alignment(0.76, -0.74);
+        // Top-right chip → dice to the right of the chip row
+        return const Alignment(0.92, -0.88);
       case LudoColor.yellow:
-        return const Alignment(0.76, 0.74);
+        // Bottom-right chip → dice to the right of the chip row
+        return const Alignment(0.92, 0.88);
       case LudoColor.blue:
-        return const Alignment(-0.76, 0.74);
+        // Bottom-left chip → dice to the left of the chip row
+        return const Alignment(-0.92, 0.88);
     }
   }
 
@@ -362,16 +368,28 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
     return Scaffold(
       backgroundColor: cfg.backgroundGradient[0],
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: cfg.backgroundGradient,
+      body: Stack(
+        children: [
+          // Subtle themed background (vignette + gold dust)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _BackgroundPainter(
+                bgColor: cfg.backgroundGradient[0],
+                accentColor: cfg.boardInlayLine,
+                isDark: isDark,
+              ),
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Stack(
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: cfg.backgroundGradient.map((c) => c.withOpacity(0.93)).toList(),
+              ),
+            ),
+            child: SafeArea(
+              child: Stack(
             children: [
               // Main Layout Column
               Column(
@@ -400,25 +418,28 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     ),
                   ),
 
-                  // Center Square Board (aspectRatio 1:1, edge to edge)
-                  AspectRatio(
-                    aspectRatio: 1.0,
-                    child: LudoBoard(
-                      gameState: gameState,
-                      timeScale: settings.timeScale,
-                      themeMode: settings.appTheme,
-                      themeConfig: cfg,
-                      isDark: isDark,
-                      onTokenSelected: (tokenId) {
-                        if (_boardAnimating || _passFreeze) return;
-                        _autoMoveTimer?.cancel();
-                        controller.moveToken(tokenId);
-                      },
-                      onAnimatingChanged: (v) {
-                        if (mounted) {
-                          setState(() => _boardAnimating = v);
-                        }
-                      },
+                  // Center Square Board with 7dp safe inset so edge tokens never clip
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 7.0),
+                    child: AspectRatio(
+                      aspectRatio: 1.0,
+                      child: LudoBoard(
+                        gameState: gameState,
+                        timeScale: settings.timeScale,
+                        themeMode: settings.appTheme,
+                        themeConfig: cfg,
+                        isDark: isDark,
+                        onTokenSelected: (tokenId) {
+                          if (_boardAnimating || _passFreeze) return;
+                          _autoMoveTimer?.cancel();
+                          controller.moveToken(tokenId);
+                        },
+                        onAnimatingChanged: (v) {
+                          if (mounted) {
+                            setState(() => _boardAnimating = v);
+                          }
+                        },
+                      ),
                     ),
                   ),
 
@@ -466,7 +487,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ],
           ),
         ),
-      ),
+        ),  // Container
+        ],  // outer Stack children
+      ),    // outer Stack
     );
   }
 
@@ -649,4 +672,70 @@ class _PauseAction extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Paints a subtle themed background: radial vignette + faint gold dust dots.
+class _BackgroundPainter extends CustomPainter {
+  const _BackgroundPainter({
+    required this.bgColor,
+    required this.accentColor,
+    required this.isDark,
+  });
+
+  final Color bgColor;
+  final Color accentColor;
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Dark vignette edges
+    final vigPaint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment.center,
+        radius: 1.0,
+        colors: [
+          Colors.transparent,
+          Colors.black.withOpacity(isDark ? 0.55 : 0.18),
+        ],
+        stops: const [0.55, 1.0],
+      ).createShader(Offset.zero & size);
+    canvas.drawRect(Offset.zero & size, vigPaint);
+
+    // Faint gold-dust dots scattered in top and bottom thirds
+    final dotPaint = Paint()
+      ..color = accentColor.withOpacity(isDark ? 0.07 : 0.04)
+      ..style = PaintingStyle.fill;
+
+    final rng = math.Random(42); // fixed seed → stable layout
+    final zones = [
+      Rect.fromLTWH(0, 0, size.width, size.height * 0.28),
+      Rect.fromLTWH(0, size.height * 0.72, size.width, size.height * 0.28),
+    ];
+    for (final zone in zones) {
+      for (int i = 0; i < 30; i++) {
+        final x = zone.left + rng.nextDouble() * zone.width;
+        final y = zone.top + rng.nextDouble() * zone.height;
+        final r = 1.5 + rng.nextDouble() * 3.0;
+        canvas.drawCircle(Offset(x, y), r, dotPaint);
+      }
+    }
+
+    // Subtle board pedestal glow — soft gold circle behind board center
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final glowPaint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment.center,
+        radius: 0.5,
+        colors: [
+          accentColor.withOpacity(isDark ? 0.10 : 0.06),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: size.width * 0.55));
+    canvas.drawCircle(Offset(cx, cy), size.width * 0.55, glowPaint);
+  }
+
+  @override
+  bool shouldRepaint(_BackgroundPainter old) =>
+      old.bgColor != bgColor || old.accentColor != accentColor || old.isDark != isDark;
 }

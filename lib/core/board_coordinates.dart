@@ -2,68 +2,30 @@ import 'dart:ui';
 import '../models/ludo_color.dart';
 
 class BoardLayout {
-  /// Proportions: Left yard 33%, Center road 34%, Right yard 33%.
-  /// This gives the 3 road lanes a 70% wider track while keeping the player
-  /// base yards compact and neat.
-  static const double yardFraction = 0.33;
-  static const double roadFraction = 0.34;
+  /// Standard Ludo: true uniform 15x15 grid.
+  /// 6 cells yard + 3 cells road + 6 cells yard = 15 cells.
+  /// Every cell is a perfect square of identical size.
+  static const int gridCount = 15;
 
-  static double colLeft(double col, double totalW) {
-    final yardW = totalW * yardFraction;
-    final roadW = totalW * roadFraction;
-    final yardCell = yardW / 6.0;
-    final roadCell = roadW / 3.0;
+  static double cellWidth(double col, double totalW) => totalW / gridCount;
+  static double cellHeight(double row, double totalH) => totalH / gridCount;
 
-    if (col <= 6.0) {
-      return col * yardCell;
-    } else if (col <= 9.0) {
-      return yardW + (col - 6.0) * roadCell;
-    } else {
-      return yardW + roadW + (col - 9.0) * yardCell;
-    }
-  }
-
-  static double rowTop(double row, double totalH) {
-    final yardH = totalH * yardFraction;
-    final roadH = totalH * roadFraction;
-    final yardCell = yardH / 6.0;
-    final roadCell = roadH / 3.0;
-
-    if (row <= 6.0) {
-      return row * yardCell;
-    } else if (row <= 9.0) {
-      return yardH + (row - 6.0) * roadCell;
-    } else {
-      return yardH + roadH + (row - 9.0) * yardCell;
-    }
-  }
-
-  static double cellWidth(double col, double totalW) {
-    if (col >= 6.0 && col < 9.0) {
-      return (totalW * roadFraction) / 3.0;
-    }
-    return (totalW * yardFraction) / 6.0;
-  }
-
-  static double cellHeight(double row, double totalH) {
-    if (row >= 6.0 && row < 9.0) {
-      return (totalH * roadFraction) / 3.0;
-    }
-    return (totalH * yardFraction) / 6.0;
-  }
+  static double colLeft(double col, double totalW) => col * (totalW / gridCount);
+  static double rowTop(double row, double totalH) => row * (totalH / gridCount);
 
   static Rect cellRect(double col, double row, double totalW, double totalH) {
-    final left = colLeft(col, totalW);
-    final top = rowTop(row, totalH);
-    final width = cellWidth(col, totalW);
-    final height = cellHeight(row, totalH);
-    return Rect.fromLTWH(left, top, width, height);
+    final tw = totalW / gridCount;
+    final th = totalH / gridCount;
+    return Rect.fromLTWH(col * tw, row * th, tw, th);
   }
 
   static Offset cellCenter(double col, double row, double totalW, double totalH) {
-    final rect = cellRect(col, row, totalW, totalH);
-    return rect.center;
+    final tw = totalW / gridCount;
+    final th = totalH / gridCount;
+    return Offset((col + 0.5) * tw, (row + 0.5) * th);
   }
+
+  static double baseTokenSize(double totalW) => (totalW / gridCount) * 0.88;
 }
 
 class BoardPoint {
@@ -73,12 +35,11 @@ class BoardPoint {
   const BoardPoint(this.row, this.col);
 
   Offset toOffset(double tileSize) {
-    return toOffsetXY(tileSize, tileSize);
+    return Offset((col + 0.5) * tileSize, (row + 0.5) * tileSize);
   }
 
-  /// Cell center with wide road and compact player bases.
   Offset toOffsetXY(double tileW, double tileH) {
-    return BoardLayout.cellCenter(col, row, tileW * 15.0, tileH * 15.0);
+    return Offset((col + 0.5) * tileW, (row + 0.5) * tileH);
   }
 }
 
@@ -203,41 +164,40 @@ class BoardCoordinates {
     ],
   };
 
-  /// Center Home finish destination (step 56).
+  /// Center Home finish destination (step 56) inside each color's triangle.
   static const Map<LudoColor, BoardPoint> homeDestinations = {
-    LudoColor.red: BoardPoint(7.0, 6.2),
-    LudoColor.green: BoardPoint(6.2, 7.0),
-    LudoColor.yellow: BoardPoint(7.0, 7.8),
-    LudoColor.blue: BoardPoint(7.8, 7.0),
+    LudoColor.red: BoardPoint(7.0, 6.05),
+    LudoColor.green: BoardPoint(6.05, 7.0),
+    LudoColor.yellow: BoardPoint(7.0, 7.95),
+    LudoColor.blue: BoardPoint(7.95, 7.0),
   };
 
-  /// Base slots: a neat 2×2 group near the middle of each yard, sized
-  /// for large pawns (the dice now live in the player panels, so the
-  /// middle of the box belongs to the pieces again).
+  /// Base slots: a neat 2x2 grid evenly spaced in each 6x6 base yard
+  /// with clear gaps between slots and no overlapping.
   static const Map<LudoColor, List<BoardPoint>> baseSlots = {
     LudoColor.red: [
-      BoardPoint(2.0, 2.0),
-      BoardPoint(2.0, 4.0),
-      BoardPoint(4.0, 2.0),
-      BoardPoint(4.0, 4.0),
+      BoardPoint(1.5, 1.5),
+      BoardPoint(1.5, 3.5),
+      BoardPoint(3.5, 1.5),
+      BoardPoint(3.5, 3.5),
     ],
     LudoColor.green: [
-      BoardPoint(2.0, 10.0),
-      BoardPoint(2.0, 12.0),
-      BoardPoint(4.0, 10.0),
-      BoardPoint(4.0, 12.0),
+      BoardPoint(1.5, 10.5),
+      BoardPoint(1.5, 12.5),
+      BoardPoint(3.5, 10.5),
+      BoardPoint(3.5, 12.5),
     ],
     LudoColor.yellow: [
-      BoardPoint(10.0, 10.0),
-      BoardPoint(10.0, 12.0),
-      BoardPoint(12.0, 10.0),
-      BoardPoint(12.0, 12.0),
+      BoardPoint(10.5, 10.5),
+      BoardPoint(10.5, 12.5),
+      BoardPoint(12.5, 10.5),
+      BoardPoint(12.5, 12.5),
     ],
     LudoColor.blue: [
-      BoardPoint(10.0, 2.0),
-      BoardPoint(10.0, 4.0),
-      BoardPoint(12.0, 2.0),
-      BoardPoint(12.0, 4.0),
+      BoardPoint(10.5, 1.5),
+      BoardPoint(10.5, 3.5),
+      BoardPoint(12.5, 1.5),
+      BoardPoint(12.5, 3.5),
     ],
   };
 

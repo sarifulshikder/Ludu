@@ -160,10 +160,8 @@ class BoardPainter extends CustomPainter {
           ..strokeWidth = 1.2,
       );
 
-      // Deep token wells (2x2 base slots)
-      // Radius sized to the road cell (wider), not the yard cell
-      final roadCellW = BoardLayout.cellWidth(7.0, totalW);
-      final wellR = roadCellW * 0.52;
+      // Deep token wells (2x2 base slots) spaced evenly in base panel
+      final wellR = tu * 0.54;
       for (final slot in BoardCoordinates.baseSlots[color]!) {
         final c = slot.toOffsetXY(tw, th);
         // Well recessed cavity
@@ -177,19 +175,19 @@ class BoardPainter extends CustomPainter {
           c,
           wellR,
           Paint()
-            ..color = Colors.white.withOpacity(0.90)
+            ..color = _cfg.tokenWellRim.withOpacity(0.90)
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(2.0, tu * 0.09),
+            ..strokeWidth = max(1.8, tu * 0.08),
         );
         if (isActive) {
           canvas.drawCircle(
             c,
-            wellR * 1.15,
+            wellR + 2.5,
             Paint()
               ..color = Colors.white.withOpacity(0.60)
               ..style = PaintingStyle.stroke
               ..strokeWidth = 2.0
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
           );
         }
       }
@@ -331,34 +329,28 @@ class BoardPainter extends CustomPainter {
   // --- Centre: 3x3 finish trophy medallion -------------------------------
   void _drawCentre(Canvas canvas, double tw, double th, double tu) {
     final centre = Offset(7.5 * tw, 7.5 * th);
-    final corners = [
-      Offset((7.5 - 1.5) * tw, (7.5 - 1.5) * th),
-      Offset((7.5 + 1.5) * tw, (7.5 - 1.5) * th),
-      Offset((7.5 + 1.5) * tw, (7.5 + 1.5) * th),
-      Offset((7.5 - 1.5) * tw, (7.5 + 1.5) * th),
-    ];
-    final colors = [
-      LudoColor.red,
-      LudoColor.green,
-      LudoColor.yellow,
-      LudoColor.blue
+    final nw = Offset(6.0 * tw, 6.0 * th);
+    final ne = Offset(9.0 * tw, 6.0 * th);
+    final se = Offset(9.0 * tw, 9.0 * th);
+    final sw = Offset(6.0 * tw, 9.0 * th);
+
+    // 4 triangles of the pinwheel tiling the 3x3 block exactly:
+    // Red West, Green North, Yellow East, Blue South
+    final triangles = [
+      (color: LudoColor.red, p1: sw, p2: nw),
+      (color: LudoColor.green, p1: nw, p2: ne),
+      (color: LudoColor.yellow, p1: ne, p2: se),
+      (color: LudoColor.blue, p1: se, p2: sw),
     ];
 
-    for (int i = 0; i < 4; i++) {
-      final a = corners[i];
-      final b = corners[(i + 1) % 4];
+    for (final tri in triangles) {
       final path = Path()
         ..moveTo(centre.dx, centre.dy)
-        ..lineTo(a.dx, a.dy)
-        ..quadraticBezierTo(
-          (a.dx + b.dx) / 2 + (centre.dx - (a.dx + b.dx) / 2) * 0.12,
-          (a.dy + b.dy) / 2 + (centre.dy - (a.dy + b.dy) / 2) * 0.12,
-          b.dx,
-          b.dy,
-        )
+        ..lineTo(tri.p1.dx, tri.p1.dy)
+        ..lineTo(tri.p2.dx, tri.p2.dy)
         ..close();
 
-      final themeColor = _cfg.colorOf(colors[i]);
+      final themeColor = _cfg.colorOf(tri.color);
       canvas.drawPath(
         path,
         Paint()
@@ -372,36 +364,48 @@ class BoardPainter extends CustomPainter {
             end: Alignment.bottomRight,
           ).createShader(path.getBounds()),
       );
+
+      // Gold inlay divider line
       canvas.drawPath(
         path,
         Paint()
-          ..color = Colors.white.withOpacity(0.4)
+          ..color = _cfg.boardInlayLine.withOpacity(0.65)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.0,
       );
     }
 
-    // Center crown / medallion hub
+    // Outer 3x3 border
+    canvas.drawRect(
+      Rect.fromLTWH(6.0 * tw, 6.0 * th, 3.0 * tw, 3.0 * th),
+      Paint()
+        ..color = _cfg.boardInlayLine
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+
+    // Center gold star medallion hub
+    final hubR = tu * 0.48;
     canvas.drawCircle(
       centre,
-      tu * 0.72,
+      hubR,
       Paint()
         ..shader = RadialGradient(
           colors: [_cfg.hubCenterStart, _cfg.hubCenterEnd],
           stops: const [0.0, 1.0],
-        ).createShader(Rect.fromCircle(center: centre, radius: tu * 0.72)),
+        ).createShader(Rect.fromCircle(center: centre, radius: hubR)),
     );
     canvas.drawCircle(
       centre,
-      tu * 0.72,
+      hubR,
       Paint()
         ..color = _cfg.hubBorder
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6,
+        ..strokeWidth = 1.8,
     );
-    _star(canvas, centre, tu * 0.40,
+    _star(canvas, centre, hubR * 0.58,
         Paint()..color = _cfg.hubIconColor, fill: true);
-    _star(canvas, centre + const Offset(0, -1.0), tu * 0.35,
+    _star(canvas, centre + const Offset(0, -0.8), hubR * 0.50,
         Paint()..color = Colors.white.withOpacity(0.95), fill: true);
   }
 

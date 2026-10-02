@@ -205,15 +205,15 @@ class _LudoBoardState extends State<LudoBoard>
         final double th = height / 15.0;
         final double tu = min(tw, th);
 
-        // Tokens sized to the wider road cells (cols 6-9) for a big prominent coin
-        final double roadCellW = BoardLayout.cellWidth(7.0, width);
-        final double tokenSize = roadCellW * 0.90;
+        // Tokens sized to 88% of uniform cell width, centered in each cell
+        final double tokenSize = tu * 0.88;
 
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(tu * 0.40),
-          child: Stack(
-            children: [
-              Positioned.fill(
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(tu * 0.40),
                 child: CustomPaint(
                   painter: BoardPainter(
                     isDark: widget.isDark,
@@ -223,9 +223,10 @@ class _LudoBoardState extends State<LudoBoard>
                   ),
                 ),
               ),
-              ..._buildAllTokens(tw, th, tu, tokenSize),
-              ..._buildLastMoveMarker(tw, th, tu),
-              ..._buildYardLabels(tw, th, tu),
+            ),
+            ..._buildAllTokens(tw, th, tu, tokenSize),
+            ..._buildLastMoveMarker(tw, th, tu),
+            ..._buildYardLabels(tw, th, tu),
               if (_burstEmoji != null)
                 Positioned.fill(
                   child: IgnorePointer(
@@ -254,8 +255,7 @@ class _LudoBoardState extends State<LudoBoard>
                   ),
                 ),
             ],
-          ),
-        );
+          );
       },
     );
   }
@@ -369,6 +369,9 @@ class _LudoBoardState extends State<LudoBoard>
     final List<Widget> tokenWidgets = [];
     final Map<String, List<Map<String, dynamic>>> buckets = {};
 
+    // Base coins are sized to the yard slot gap, not the wide road cell.
+    final double baseTokenSize = BoardLayout.baseTokenSize(tw * 15.0);
+
     for (int pIdx = 0; pIdx < widget.gameState.players.length; pIdx++) {
       final player = widget.gameState.players[pIdx];
       final isCurrent = (pIdx == widget.gameState.currentPlayerIndex);
@@ -408,8 +411,10 @@ class _LudoBoardState extends State<LudoBoard>
         final bool isMovable = item['isMovable'];
         final bool isAnimating = item['isAnimating'];
 
-        // Compact base tokens and square path tokens fill 96% of cell
-        double displaySize = tokenSize;
+        // Path tokens fill the wide road cell; tokens waiting in a base
+        // are capped to the yard slot gap so the 2x2 group never overlaps.
+        double displaySize =
+            token.step == -1 ? min(tokenSize, baseTokenSize) : tokenSize;
         Offset offset = Offset.zero;
         if (count > 1 && token.step != -1) {
           if (count == 2) {
