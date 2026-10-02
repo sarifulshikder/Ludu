@@ -66,7 +66,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   static const double _chipBoardGap = 12.0;
   static const double _diceGap = 12.0;
   static const double _diceSize = 110.0;
-  static const double _diceSlotWidth = 126.0;
+  static const double _diceSlotWidth = 118.0;
   static const double _rowHeight = 118.0;
   static const double _boardSideInset = 10.0;
 
@@ -344,11 +344,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final Offset slotTopLeft = slotBox.localToGlobal(Offset.zero);
     final Offset stackTopLeft = stackBox.globalToLocal(slotTopLeft);
     final Size slotSize = slotBox.size;
-    // Dice sits centered vertically in the slot, nudged ~8 dp toward the
+    // Dice sits centered vertically in the slot, nudged ~4 dp toward the
     // active side so Red→Green (and Blue→Yellow) still glides visibly
     // while keeping >=12 dp gaps to both chips.
     final bool leftActive = active == LudoColor.red || active == LudoColor.blue;
-    final double dx = leftActive ? -8.0 : 8.0;
+    final double dx = leftActive ? -4.0 : 4.0;
     final Offset center = Offset(
       stackTopLeft.dx + slotSize.width / 2 + dx,
       stackTopLeft.dy + slotSize.height / 2,

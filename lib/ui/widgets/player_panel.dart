@@ -65,8 +65,8 @@ class PlayerPanel extends StatelessWidget {
 
     Widget chipContent = AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      height: 70,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: cfg.surfaceCard,
         gradient: LinearGradient(
@@ -112,11 +112,11 @@ class PlayerPanel extends StatelessWidget {
             // Pawn avatar icon
             PinAvatar(
               color: color,
-              size: 34,
+              size: 30,
               isDark: isDark,
               themePlayerColor: themeColor,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             // Name + team badge + progress pills
             Expanded(
               child: Column(
@@ -131,7 +131,7 @@ class PlayerPanel extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 13.5,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.2,
                             color: isDark
@@ -144,42 +144,57 @@ class PlayerPanel extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (teamMode) ...[
-                        const SizedBox(width: 4),
-                        _TeamBadge(teamId: player.teamId),
-                      ],
-                      if (finished) ...[
-                        const SizedBox(width: 4),
-                        Text(
-                          ordinal(player.finishRank!),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFFF2C14E),
-                          ),
-                        ),
-                      ] else if (isActive) ...[
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: themeColor.primary.withOpacity(0.25),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: themeColor.primary,
-                              width: 0.9,
-                            ),
-                          ),
-                          child: Text(
-                            'TURN',
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
-                              color: isDark
-                                  ? themeColor.lightGlow
-                                  : themeColor.primary,
+                      // Trailing badges scale down instead of overflowing on
+                      // narrow chips (team mode shows badge + TURN/rank).
+                      if (teamMode || finished || isActive) ...[
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (teamMode) ...[
+                                  _TeamBadge(teamId: player.teamId),
+                                  const SizedBox(width: 3),
+                                ],
+                                if (finished)
+                                  Text(
+                                    ordinal(player.finishRank!),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFFF2C14E),
+                                    ),
+                                  )
+                                else if (isActive)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 3, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: themeColor.primary
+                                          .withOpacity(0.25),
+                                      borderRadius:
+                                          BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: themeColor.primary,
+                                        width: 0.9,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'TURN',
+                                      style: TextStyle(
+                                        fontSize: 8.0,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.4,
+                                        color: isDark
+                                            ? themeColor.lightGlow
+                                            : themeColor.primary,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ),

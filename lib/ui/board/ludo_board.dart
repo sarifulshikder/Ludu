@@ -88,7 +88,6 @@ class _LudoBoardState extends State<LudoBoard>
   BoardPoint? _animStartPos;
   AnimationController? _moveController;
   int _lastSoundStep = -1;
-  int _hopGeneration = 0;
 
   final List<_CaptureFlight> _captureFlights = [];
   final Set<int> _flyingKeys = {};
@@ -234,7 +233,6 @@ class _LudoBoardState extends State<LudoBoard>
 
   @override
   void dispose() {
-    _hopGeneration++;
     _moveController?.dispose();
     for (final f in _captureFlights) {
       try {
@@ -278,7 +276,6 @@ class _LudoBoardState extends State<LudoBoard>
     final startStep = token.step;
     final int finalStep = (startStep == -1) ? 0 : startStep + roll;
     final key = _tokenKey(token.color, token.id);
-    _hopGeneration++;
 
     final bool isBaseExit = startStep == -1;
     final List<BoardPoint> wps = [];
