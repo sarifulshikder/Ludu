@@ -40,6 +40,7 @@ class LudoBoard extends StatefulWidget {
   final AppThemeMode themeMode;
   final LuduThemeConfig? themeConfig;
   final bool isDark;
+  final bool faceToFaceMode;
 
   const LudoBoard({
     super.key,
@@ -50,6 +51,7 @@ class LudoBoard extends StatefulWidget {
     this.themeMode = AppThemeMode.royalGold,
     this.themeConfig,
     this.isDark = false,
+    this.faceToFaceMode = false,
   });
 
   @override
@@ -608,69 +610,140 @@ class _LudoBoardState extends State<LudoBoard>
     final anchor = _stackPickAnchor!;
     final Offset c = anchor.toOffsetXY(tw, th);
     const double pickSize = 56.0;
-    const double gap = 8.0;
-    final double w = items.length * pickSize + (items.length - 1) * gap + 20;
-    double left = (c.dx - w / 2).clamp(6.0, max(6.0, bw - w - 6.0));
-    // Fan out above the cell when there is room, else below.
-    double top = c.dy - tu * 0.5 - 10 - (pickSize + 30);
-    if (top < 4) top = c.dy + tu * 0.5 + 10;
-    if (top + pickSize + 30 > bh - 4) {
-      top = max(4.0, bh - pickSize - 34);
+    const double gap = 10.0;
+    final double w = items.length * pickSize + (items.length - 1) * gap + 28;
+    final double cardH = pickSize + 48.0;
+
+    double left = (c.dx - w / 2).clamp(8.0, max(8.0, bw - w - 8.0));
+    final bool placeAbove = c.dy - tu * 0.6 - cardH >= 6.0;
+    double top = placeAbove
+        ? c.dy - tu * 0.65 - cardH
+        : c.dy + tu * 0.65;
+    if (top < 6) top = 6;
+    if (top + cardH > bh - 6) {
+      top = max(6.0, bh - cardH - 6);
     }
+
+    final double pointerX = (c.dx - left).clamp(16.0, w - 16.0);
+
     return Stack(
       children: [
+        // Dim overlay over the board (§12)
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _stackPick = null),
-            child: Container(color: Colors.transparent),
+            child: Container(color: Colors.black.withOpacity(0.42)),
           ),
         ),
+        // Highlight ring around the selected stack cell (§12)
+        Positioned(
+          left: c.dx - tu * 0.60,
+          top: c.dy - tu * 0.60,
+          width: tu * 1.20,
+          height: tu * 1.20,
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: const Color(0xFFF2C14E),
+                  width: 2.4,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFF2C14E).withOpacity(0.65),
+                    blurRadius: 14,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // Popup card anchored to stack with pointer (§12)
         Positioned(
           left: left,
           top: top,
           width: w,
           child: Material(
-            color: Colors.black.withOpacity(0.88),
-            borderRadius: BorderRadius.circular(16),
-            elevation: 8,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Choose a token',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
+            color: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!placeAbove)
+                  Padding(
+                    padding: EdgeInsets.only(left: pointerX - 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: CustomPaint(
+                        size: const Size(16, 8),
+                        painter: _TrianglePointerPainter(pointingUp: true),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // NOTE: no GestureDetector wrapper here — TokenWidget
-                      // owns the single tap target via onTap (see
-                      // _pickStackToken). A wrapper detector would compete
-                      // with it and swallow the tap.
-                      for (int i = 0; i < items.length; i++) ...[
-                        if (i > 0) SizedBox(width: gap),
-                        TokenWidget(
-                          token: items[i].token,
-                          size: pickSize,
-                          isMovable: true,
-                          themeMode: widget.themeMode,
-                          themePlayerColor:
-                              _cfg.colorOf(items[i].token.color),
-                          onTap: () => _pickStackToken(items[i].token),
-                        ),
-                      ],
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF141926).withOpacity(0.96),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFF2C14E),
+                      width: 1.5,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black54,
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
+                      ),
                     ],
                   ),
-                ],
-              ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Choose a token',
+                        style: TextStyle(
+                          color: Color(0xFFFFF6D8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (int i = 0; i < items.length; i++) ...[
+                            if (i > 0) const SizedBox(width: gap),
+                            TokenWidget(
+                              token: items[i].token,
+                              size: pickSize,
+                              isMovable: true,
+                              themeMode: widget.themeMode,
+                              themePlayerColor:
+                                  _cfg.colorOf(items[i].token.color),
+                              onTap: () => _pickStackToken(items[i].token),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (placeAbove)
+                  Padding(
+                    padding: EdgeInsets.only(left: pointerX - 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: CustomPaint(
+                        size: const Size(16, 8),
+                        painter: _TrianglePointerPainter(pointingUp: false),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -694,38 +767,45 @@ class _LudoBoardState extends State<LudoBoard>
       final w = tw * 3.6;
       final h = th * 0.58;
 
+      // Face-to-face ON (§9): top labels rotate 180° toward top seats
+      final bool rotateTop = widget.faceToFaceMode &&
+          (color == LudoColor.red || color == LudoColor.green);
+
       widgets.add(
         Positioned(
           left: cx * tw - w / 2,
           top: cy * th - h / 2,
           width: w,
           height: h,
-          child: Center(
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: tu * 0.22,
-                vertical: tu * 0.06,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(isTurn ? 0.65 : 0.42),
-                borderRadius: BorderRadius.circular(tu * 0.2),
-                border: isTurn
-                    ? Border.all(color: themeColor.lightGlow, width: 1.4)
-                    : null,
-              ),
-              child: Text(
-                '${color.emblemGlyph} ${player.name}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: tu * 0.36,
-                  fontWeight: FontWeight.w900,
-                  height: 1.0,
-                  shadows: const [
-                    Shadow(color: Colors.black, blurRadius: 3),
-                  ],
+          child: RotatedBox(
+            quarterTurns: rotateTop ? 2 : 0,
+            child: Center(
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: tu * 0.22,
+                  vertical: tu * 0.06,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(isTurn ? 0.65 : 0.42),
+                  borderRadius: BorderRadius.circular(tu * 0.2),
+                  border: isTurn
+                      ? Border.all(color: themeColor.lightGlow, width: 1.4)
+                      : null,
+                ),
+                child: Text(
+                  '${color.emblemGlyph} ${player.name}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: tu * 0.36,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                    shadows: const [
+                      Shadow(color: Colors.black, blurRadius: 3),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -784,10 +864,9 @@ class _LudoBoardState extends State<LudoBoard>
 
   List<Widget> _buildAllTokens(
       double tw, double th, double tu, double tokenSize) {
-    final List<Widget> tokenWidgets = [];
     final Map<String, List<_BucketItem>> buckets = {};
 
-    // Base coins use the larger yard slot size (1.20 cells).
+    // Base pawns use the larger yard slot size (1.20 cells).
     final double baseTokenSize = BoardLayout.baseTokenSize(tw * 15.0);
     final int? animKey = _animatingTokenKey;
 
@@ -820,6 +899,8 @@ class _LudoBoardState extends State<LudoBoard>
       }
     }
 
+    final entries = <({double row, double col, Widget widget})>[];
+
     for (final bucket in buckets.values) {
       final count = bucket.length;
       final bool isBaseBucket = bucket.first.token.step == -1;
@@ -845,16 +926,16 @@ class _LudoBoardState extends State<LudoBoard>
         } else if (count == 1) {
           displaySize = tokenSize;
         } else if (count == 2) {
-          // Two tokens side by side at ~60% each — fits inside the cell.
-          displaySize = tokenSize * 0.60;
-          offset = Offset((i == 0 ? -1 : 1) * tw * 0.21, 0);
+          // Two tokens side by side at ~65% scale (§10)
+          displaySize = tokenSize * 0.65;
+          offset = Offset((i == 0 ? -1 : 1) * tw * 0.18, 0);
         } else {
-          // 3-4 tokens in a 2x2 cluster at ~48% each.
-          displaySize = tokenSize * 0.48;
+          // 3-4 tokens in a tidy fan at ~50% scale (§10)
+          displaySize = tokenSize * 0.50;
           const dx = [-1, 1, -1, 1];
           const dy = [-1, -1, 1, 1];
           final k = i % 4;
-          offset = Offset(dx[k] * tw * 0.22, dy[k] * th * 0.22);
+          offset = Offset(dx[k] * tw * 0.18, dy[k] * th * 0.18);
         }
 
         final center = boardPoint.toOffsetXY(tw, th);
@@ -869,8 +950,10 @@ class _LudoBoardState extends State<LudoBoard>
 
         final themeColor = _cfg.colorOf(token.color);
 
-        tokenWidgets.add(
-          Positioned(
+        entries.add((
+          row: boardPoint.row,
+          col: boardPoint.col,
+          widget: Positioned(
             key: ValueKey('token_${token.color.name}_${token.id}'),
             left: targetLeft,
             top: targetTop,
@@ -899,11 +982,53 @@ class _LudoBoardState extends State<LudoBoard>
               },
             ),
           ),
-        );
+        ));
       }
     }
-    return tokenWidgets;
+
+    // Sort tokens by board row (§10: lower rows drawn in front so tall heads
+    // never hide the cell or token in front of them).
+    entries.sort((a, b) {
+      final r = a.row.compareTo(b.row);
+      if (r != 0) return r;
+      return a.col.compareTo(b.col);
+    });
+
+    return entries.map((e) => e.widget).toList();
   }
+}
+
+/// Triangular pointer pointing toward the selected stack cell (§12).
+class _TrianglePointerPainter extends CustomPainter {
+  final bool pointingUp;
+  _TrianglePointerPainter({required this.pointingUp});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    if (pointingUp) {
+      path.moveTo(size.width / 2, 0);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    } else {
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width / 2, size.height);
+    }
+    path.close();
+    canvas.drawPath(path, Paint()..color = const Color(0xFF141926));
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFFF2C14E)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _TrianglePointerPainter old) =>
+      old.pointingUp != pointingUp;
 }
 
 /// Small twinkling sparkle shown when a token glides into the center.

@@ -56,7 +56,7 @@ void main() {
         reason: 'Yellow (P3) must be bottom-right');
   });
 
-  testWidgets('§A5 exactly ONE single dice on screen with neutral face before roll',
+  testWidgets('§A5 four embedded dice on screen, all neutral before first roll',
       (tester) async {
     await pumpHome(tester);
     await startFourPlayerGame(tester);
@@ -64,9 +64,11 @@ void main() {
     final dice = tester
         .widgetList<DiceWidget>(find.byType(DiceWidget))
         .toList();
-    expect(dice.length, equals(1), reason: 'must show only ONE large dice on screen');
-    expect(dice.first.value, isNull,
-        reason: 'dice must be neutral before that player rolls');
+    // One dice embedded per player panel (4 players).
+    expect(dice.length, equals(4), reason: 'must show 4 embedded dice (one per player dock)');
+    // Before any player rolls, no dice should show a rolled value.
+    expect(dice.every((d) => d.value == null), isTrue,
+        reason: 'all dice must be neutral before first roll');
   });
 
   testWidgets('§A3 default names are never truncated', (tester) async {
