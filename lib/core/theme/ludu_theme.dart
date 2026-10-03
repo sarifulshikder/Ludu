@@ -191,10 +191,10 @@ class LuduTheme {
         accentRing: Color(0xFFFFD700),
       ),
       LudoColor.yellow: ThemePlayerColor(
-        primary: Color(0xFFE5A900),
-        darkShade: Color(0xFFA67C00),
-        lightGlow: Color(0xFFFFDF6D),
-        highlight: Color(0xFFFFF9DB),
+        primary: Color(0xFFD48B00),
+        darkShade: Color(0xFF8F5800),
+        lightGlow: Color(0xFFFFB834),
+        highlight: Color(0xFFFFF2D0),
         accentRing: Color(0xFFFFD700),
       ),
       LudoColor.blue: ThemePlayerColor(
@@ -430,10 +430,10 @@ class LuduTheme {
         accentRing: Color(0xFFC59D3F),
       ),
       LudoColor.yellow: ThemePlayerColor(
-        primary: Color(0xFFE5A900),
-        darkShade: Color(0xFFA67C00),
-        lightGlow: Color(0xFFFFDF6D),
-        highlight: Color(0xFFFFF9DB),
+        primary: Color(0xFFD48B00),
+        darkShade: Color(0xFF8F5800),
+        lightGlow: Color(0xFFFFB834),
+        highlight: Color(0xFFFFF2D0),
         accentRing: Color(0xFFC59D3F),
       ),
       LudoColor.blue: ThemePlayerColor(

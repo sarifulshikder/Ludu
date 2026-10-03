@@ -25,7 +25,7 @@ class BoardLayout {
     return Offset((col + 0.5) * tw, (row + 0.5) * th);
   }
 
-  static double baseTokenSize(double totalW) => (totalW / gridCount) * 1.20;
+  static double baseTokenSize(double totalW) => (totalW / gridCount) * 1.35;
 }
 
 class BoardPoint {
@@ -172,34 +172,37 @@ class BoardCoordinates {
     LudoColor.blue: BoardPoint(7.95, 7.0),
   };
 
-  /// Base slots: a neat 2x2 grid evenly spaced to fill the inner base
-  /// panel. Slots sit at 1.8 / 4.2 inside each 6x6 yard, so the inner
-  /// panel (10%..90% => 0.6..5.4) holds two 1.20-cell tokens per row at
-  /// ~75% of its width with clear gaps and no overlap.
+  /// Base slots: a neat 2x2 grid evenly spaced inside the 4.4 x 4.4 cell
+  /// base panel located in the outer corner of each 6x6 zone (§3 & §4).
+  ///
+  /// Red panel: row 0.2..4.6, col 0.2..4.6 -> slots (1.4, 1.4), (1.4, 3.4), (3.4, 1.4), (3.4, 3.4)
+  /// Green panel: row 0.2..4.6, col 10.4..14.8 -> slots (1.4, 11.6), (1.4, 13.6), (3.4, 11.6), (3.4, 13.6)
+  /// Yellow panel: row 10.4..14.8, col 10.4..14.8 -> slots (11.6, 11.6), (11.6, 13.6), (13.6, 11.6), (13.6, 13.6)
+  /// Blue panel: row 10.4..14.8, col 0.2..4.6 -> slots (11.6, 1.4), (11.6, 3.4), (13.6, 1.4), (13.6, 3.4)
   static const Map<LudoColor, List<BoardPoint>> baseSlots = {
     LudoColor.red: [
-      BoardPoint(1.8, 1.8),
-      BoardPoint(1.8, 4.2),
-      BoardPoint(4.2, 1.8),
-      BoardPoint(4.2, 4.2),
+      BoardPoint(1.4, 1.4),
+      BoardPoint(1.4, 3.4),
+      BoardPoint(3.4, 1.4),
+      BoardPoint(3.4, 3.4),
     ],
     LudoColor.green: [
-      BoardPoint(1.8, 10.8),
-      BoardPoint(1.8, 13.2),
-      BoardPoint(4.2, 10.8),
-      BoardPoint(4.2, 13.2),
+      BoardPoint(1.4, 11.6),
+      BoardPoint(1.4, 13.6),
+      BoardPoint(3.4, 11.6),
+      BoardPoint(3.4, 13.6),
     ],
     LudoColor.yellow: [
-      BoardPoint(10.8, 10.8),
-      BoardPoint(10.8, 13.2),
-      BoardPoint(13.2, 10.8),
-      BoardPoint(13.2, 13.2),
+      BoardPoint(11.6, 11.6),
+      BoardPoint(11.6, 13.6),
+      BoardPoint(13.6, 11.6),
+      BoardPoint(13.6, 13.6),
     ],
     LudoColor.blue: [
-      BoardPoint(10.8, 1.8),
-      BoardPoint(10.8, 4.2),
-      BoardPoint(13.2, 1.8),
-      BoardPoint(13.2, 4.2),
+      BoardPoint(11.6, 1.4),
+      BoardPoint(11.6, 3.4),
+      BoardPoint(13.6, 1.4),
+      BoardPoint(13.6, 3.4),
     ],
   };
 

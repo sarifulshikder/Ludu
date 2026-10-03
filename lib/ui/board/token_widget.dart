@@ -8,18 +8,20 @@ import '../../models/ludo_color.dart';
 import '../../models/token.dart';
 import '../../services/haptics_service.dart';
 
-/// Gem Pawn (§10): Original tall standing pawn design.
+/// Crown Pawn (§1: Original chess-pawn style, replacing Gem Pawn).
 ///
 /// Features:
-/// - Bell-shaped glossy body with 3D cylindrical lighting and specular sheen.
-/// - Faceted gem on top rising ~40-50% of a cell above it.
-/// - Thin gold collar ring at the neck.
-/// - Round base (~80% of cell width) with soft contact shadow.
-/// - Movable tokens: gentle bob and glowing ring around the base.
-/// - Color-blind double-coding: distinct symbol on body per color (▲ Red ruby,
-///   ● Green emerald, ★ Yellow amber, ■ Blue sapphire) with clear number.
-/// - Reached center: golden victory star emblem.
-/// - Touch target covers base footprint and body without stealing neighboring taps.
+/// - Large glossy round head: diameter ~75% of cell width.
+/// - Short narrow neck with a thin gold collar ring.
+/// - Flared round foot ~65-70% of cell width, with a soft contact shadow.
+/// - Total height ~1.25 to 1.3 cells; head rises above cell by at most ~20-25% of a cell.
+/// - Token number printed large and centered on the head (clearly readable at a glance).
+/// - Color-blind symbol placed on the collar or foot.
+/// - Strong specular highlight on the head, thin dark outline, bright rim.
+/// - Rich jewel colors: ruby, emerald, sapphire, deeper amber.
+/// - Movable tokens: gentle bob and glowing ring around the foot.
+/// - Hop animation: stretch in the air, shrinking shadow, small squash on landing.
+/// - Touch target covers foot and body without stealing neighboring taps.
 class TokenWidget extends StatefulWidget {
   final Token token;
   final double size;
@@ -115,26 +117,26 @@ class _TokenWidgetState extends State<TokenWidget>
           animation: _pulseController,
           builder: (context, child) {
             final pulseProgress = widget.isMovable ? _pulseScale.value : 0.0;
-            // Gentle bob: translates vertically up and down ~4 dp when movable
+            // Gentle bob: translates vertically up and down ~4 dp when movable (§1)
             final bob = widget.isMovable ? -4.0 * pulseProgress : 0.0;
             final lift = widget.animLift.clamp(0.0, 1.0);
             final squash = widget.squash.clamp(0.0, 1.0);
 
-            final hopScale = 1.0 + lift * 0.08;
-            final sx = hopScale * (1.0 + squash * 0.08);
-            final sy = hopScale * (1.0 - squash * 0.12);
+            // Hop animation: stretch in the air, shrinking shadow, small squash on landing (§1)
+            final hopStretchY = 1.0 + lift * 0.14 - squash * 0.14;
+            final hopStretchX = (1.0 - lift * 0.06) * (1.0 + squash * 0.12);
 
             return Transform.translate(
-              offset: Offset(0, bob - lift * w * 0.28),
+              offset: Offset(0, bob - lift * w * 0.32),
               child: Transform(
                 alignment: Alignment.bottomCenter,
-                transform: Matrix4.diagonal3Values(sx, sy, 1.0),
+                transform: Matrix4.diagonal3Values(hopStretchX, hopStretchY, 1.0),
                 child: SizedBox(
                   width: w,
                   height: w,
                   child: CustomPaint(
                     size: Size(w, w),
-                    painter: _GemPawnPainter(
+                    painter: _CrownPawnPainter(
                       color: widget.token.color,
                       themePlayerColor: widget.themePlayerColor,
                       themeMode: widget.themeMode,
@@ -151,10 +153,10 @@ class _TokenWidgetState extends State<TokenWidget>
             );
           },
         ),
-        // Touch target covering the body and base footprint
+        // Touch target covering the flared foot and pawn body (§5)
         Positioned(
           left: -pad,
-          top: -w * 0.45 - pad,
+          top: -w * 0.25 - pad,
           right: -pad,
           bottom: -pad,
           child: GestureDetector(
@@ -167,7 +169,8 @@ class _TokenWidgetState extends State<TokenWidget>
   }
 }
 
-class _GemPawnPainter extends CustomPainter {
+/// Painter for the Crown Pawn (§1: original chess-pawn style).
+class _CrownPawnPainter extends CustomPainter {
   final LudoColor color;
   final ThemePlayerColor? themePlayerColor;
   final AppThemeMode themeMode;
@@ -178,7 +181,7 @@ class _GemPawnPainter extends CustomPainter {
   final double animLift;
   final double pulseProgress;
 
-  _GemPawnPainter({
+  _CrownPawnPainter({
     required this.color,
     this.themePlayerColor,
     this.themeMode = AppThemeMode.royalGold,
@@ -195,57 +198,58 @@ class _GemPawnPainter extends CustomPainter {
     final double w = size.width;
     final double cx = w / 2;
 
-    // Palette resolution
+    // Palette resolution (§1: ruby, emerald, sapphire, deeper amber)
     final primary = themePlayerColor?.primary ?? color.primary;
     final dark = themePlayerColor?.darkShade ?? color.darkShade;
     final glow = themePlayerColor?.lightGlow ?? color.lightGlow;
     final highlight = themePlayerColor?.highlight ?? color.orbHighlight;
-    final goldCollar = const Color(0xFFFFD700);
-    final goldHighlight = const Color(0xFFFFF9D2);
-    final goldDark = const Color(0xFF9E772E);
 
-    // Geometry (§10):
-    // Round base: ~80% of cell width (radius = 0.40 * w)
-    final double baseRx = w * 0.40;
-    final double baseRy = w * 0.18;
-    final double baseCy = w * 0.74;
+    const goldCollar = Color(0xFFFFD700);
+    const goldHighlight = Color(0xFFFFF9D2);
+    const goldDark = Color(0xFF9E772E);
 
-    // 1. Soft contact shadow on ground (under round base)
-    final double shadowScale = (selectable ? 1.15 : 1.0) * (1.0 - animLift * 0.40);
-    final double shadowY = baseCy + baseRy * 0.45 - animLift * w * 0.02;
+    // --- Proportions (§1):
+    // Flared round foot: ~65 to 70% of cell width -> footRx ~0.33 to 0.35 * w
+    final double footRx = w * 0.34;
+    final double footRy = w * 0.15;
+    final double footCy = w * 0.80;
+
+    // 1. Soft contact shadow on ground (under foot, shrinks in air §1)
+    final double shadowScale = (selectable ? 1.12 : 1.0) * (1.0 - animLift * 0.45);
+    final double shadowY = footCy + footRy * 0.50 - animLift * w * 0.02;
     canvas.drawOval(
       Rect.fromCenter(
         center: Offset(cx, shadowY),
-        width: baseRx * 2.1 * shadowScale,
-        height: baseRy * 1.2 * shadowScale,
+        width: footRx * 2.2 * shadowScale,
+        height: footRy * 1.3 * shadowScale,
       ),
       Paint()
-        ..color = Colors.black.withOpacity(0.38 * (1.0 - animLift * 0.45))
+        ..color = Colors.black.withOpacity(0.42 * (1.0 - animLift * 0.50))
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, math.max(1.5, w * 0.08)),
     );
 
-    // 2. Movable glowing ring around the base footprint
+    // 2. Movable glowing ring around the foot (§1: glowing ring around the foot)
     if (selectable) {
-      final double ringGrow = 1.08 + pulseProgress * 0.12;
+      final double ringGrow = 1.08 + pulseProgress * 0.14;
       canvas.drawOval(
         Rect.fromCenter(
-          center: Offset(cx, baseCy),
-          width: baseRx * 2.0 * ringGrow,
-          height: baseRy * 2.0 * ringGrow,
+          center: Offset(cx, footCy),
+          width: footRx * 2.0 * ringGrow,
+          height: footRy * 2.0 * ringGrow,
         ),
         Paint()
           ..color = (themePlayerColor?.accentRing ?? const Color(0xFFF2C14E))
-              .withOpacity(0.50 + pulseProgress * 0.35)
+              .withOpacity(0.52 + pulseProgress * 0.38)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(2.2, w * 0.06)
+          ..strokeWidth = math.max(2.2, w * 0.065)
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, math.max(2.0, w * 0.07)),
       );
 
       canvas.drawOval(
         Rect.fromCenter(
-          center: Offset(cx, baseCy),
-          width: baseRx * 2.0 * 1.04,
-          height: baseRy * 2.0 * 1.04,
+          center: Offset(cx, footCy),
+          width: footRx * 2.0 * 1.03,
+          height: footRy * 2.0 * 1.03,
         ),
         Paint()
           ..color = Colors.white.withOpacity(0.92)
@@ -253,12 +257,11 @@ class _GemPawnPainter extends CustomPainter {
           ..strokeWidth = math.max(1.8, w * 0.045),
       );
     } else if (isLastMoved) {
-      // Last-move follow ring around base
       canvas.drawOval(
         Rect.fromCenter(
-          center: Offset(cx, baseCy),
-          width: baseRx * 2.0 * 1.06,
-          height: baseRy * 2.0 * 1.06,
+          center: Offset(cx, footCy),
+          width: footRx * 2.0 * 1.06,
+          height: footRy * 2.0 * 1.06,
         ),
         Paint()
           ..color = const Color(0xFFF2C14E).withOpacity(0.92)
@@ -267,153 +270,173 @@ class _GemPawnPainter extends CustomPainter {
       );
     }
 
-    // 3. Round base pedestal (stepped 3D coin/disk base)
-    final baseRect = Rect.fromCenter(
-      center: Offset(cx, baseCy),
-      width: baseRx * 2.0,
-      height: baseRy * 2.0,
+    // 3. Flared round foot pedestal (stepped 3D disk with gold trim)
+    final footRect = Rect.fromCenter(
+      center: Offset(cx, footCy),
+      width: footRx * 2.0,
+      height: footRy * 2.0,
     );
 
-    // Base rim bevel (bright golden/bright rim edge)
-    final baseBevelPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [const Color(0xFFFFF6D8), goldDark, const Color(0xFF4A3408)],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(baseRect);
-    canvas.drawOval(baseRect, baseBevelPaint);
-
-    // Inner base top disk (jewel toned with glossy gradient)
-    final innerBaseRect = Rect.fromCenter(
-      center: Offset(cx, baseCy - w * 0.02),
-      width: baseRx * 1.84,
-      height: baseRy * 1.76,
-    );
-    final baseFacePaint = Paint()
-      ..shader = RadialGradient(
-        colors: [highlight, primary, dark],
-        stops: const [0.0, 0.45, 1.0],
-        center: const Alignment(-0.35, -0.4),
-      ).createShader(innerBaseRect);
-    canvas.drawOval(innerBaseRect, baseFacePaint);
-
-    // Base upper rim highlight line
+    // Bevel base rim (golden metallic edge)
     canvas.drawOval(
-      innerBaseRect,
+      footRect,
       Paint()
-        ..color = Colors.white.withOpacity(0.65)
+        ..shader = LinearGradient(
+          colors: [goldHighlight, goldDark, const Color(0xFF3E2805)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ).createShader(footRect),
+    );
+
+    // Foot top face (jewel gradient)
+    final innerFootRect = Rect.fromCenter(
+      center: Offset(cx, footCy - w * 0.015),
+      width: footRx * 1.84,
+      height: footRy * 1.76,
+    );
+    canvas.drawOval(
+      innerFootRect,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [highlight, primary, dark],
+          stops: const [0.0, 0.45, 1.0],
+          center: const Alignment(-0.35, -0.4),
+        ).createShader(innerFootRect),
+    );
+
+    // Foot bright rim highlight
+    canvas.drawOval(
+      innerFootRect,
+      Paint()
+        ..color = Colors.white.withOpacity(0.70)
         ..style = PaintingStyle.stroke
         ..strokeWidth = math.max(1.0, w * 0.024),
     );
 
-    // 4. Bell-shaped glossy body
-    // Neck coordinates (where body meets collar ring)
-    final double neckY = w * 0.12;
-    final double neckHalfW = w * 0.13;
-    final double bodyBottomY = baseCy;
-    final double bodyBottomHalfW = baseRx * 0.76;
+    // 4. Waist and Body (pawn trunk connecting foot to neck)
+    // Neck coordinates:
+    final double neckY = w * 0.22;
+    final double neckHalfW = w * 0.11;
+    final double waistY = w * 0.52;
+    final double waistHalfW = w * 0.16;
+    final double bodyBottomY = footCy;
+    final double bodyBottomHalfW = footRx * 0.72;
 
-    final bodyPath = Path()
+    final trunkPath = Path()
       ..moveTo(cx - bodyBottomHalfW, bodyBottomY)
       ..cubicTo(
         cx - bodyBottomHalfW * 0.85,
-        bodyBottomY - w * 0.26,
-        cx - neckHalfW * 1.4,
-        neckY + w * 0.16,
+        waistY + w * 0.10,
+        cx - waistHalfW * 1.25,
+        waistY,
+        cx - waistHalfW,
+        waistY,
+      )
+      ..cubicTo(
+        cx - waistHalfW * 0.90,
+        waistY - w * 0.12,
+        cx - neckHalfW * 1.35,
+        neckY + w * 0.06,
         cx - neckHalfW,
         neckY,
       )
       ..lineTo(cx + neckHalfW, neckY)
       ..cubicTo(
-        cx + neckHalfW * 1.4,
-        neckY + w * 0.16,
+        cx + neckHalfW * 1.35,
+        neckY + w * 0.06,
+        cx + waistHalfW * 0.90,
+        waistY - w * 0.12,
+        cx + waistHalfW,
+        waistY,
+      )
+      ..cubicTo(
+        cx + waistHalfW * 1.25,
+        waistY,
         cx + bodyBottomHalfW * 0.85,
-        bodyBottomY - w * 0.26,
+        bodyBottomY + w * 0.10,
         cx + bodyBottomHalfW,
         bodyBottomY,
       )
       ..close();
 
-    final bodyRect = Rect.fromLTRB(
+    final trunkRect = Rect.fromLTRB(
       cx - bodyBottomHalfW,
       neckY,
       cx + bodyBottomHalfW,
       bodyBottomY,
     );
 
-    // Cylindrical 3D glossy gradient for the bell body
-    final bodyPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [
-          dark,
-          primary,
-          highlight,
-          primary,
-          dark,
-        ],
-        stops: const [0.0, 0.22, 0.45, 0.75, 1.0],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      ).createShader(bodyRect);
-    canvas.drawPath(bodyPath, bodyPaint);
+    // 3D cylindrical lighting on trunk
+    canvas.drawPath(
+      trunkPath,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            dark,
+            primary,
+            highlight,
+            primary,
+            dark,
+          ],
+          stops: const [0.0, 0.22, 0.45, 0.75, 1.0],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ).createShader(trunkRect),
+    );
 
-    // Glossy specular highlight streak along the left bell curve
-    final highlightPath = Path()
+    // Thin dark outline on trunk (§1)
+    canvas.drawPath(
+      trunkPath,
+      Paint()
+        ..color = Colors.black.withOpacity(0.40)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
+
+    // Specular highlight streak on trunk left curve
+    final trunkHighlight = Path()
       ..moveTo(cx - bodyBottomHalfW * 0.45, bodyBottomY - w * 0.04)
       ..cubicTo(
-        cx - bodyBottomHalfW * 0.40,
-        bodyBottomY - w * 0.24,
-        cx - neckHalfW * 0.80,
-        neckY + w * 0.14,
-        cx - neckHalfW * 0.50,
+        cx - waistHalfW * 0.80,
+        waistY + w * 0.08,
+        cx - waistHalfW * 0.70,
+        waistY - w * 0.06,
+        cx - neckHalfW * 0.65,
         neckY + w * 0.02,
       )
-      ..lineTo(cx - neckHalfW * 0.20, neckY + w * 0.02)
+      ..lineTo(cx - neckHalfW * 0.25, neckY + w * 0.02)
       ..cubicTo(
-        cx - neckHalfW * 0.50,
-        neckY + w * 0.14,
+        cx - waistHalfW * 0.35,
+        waistY - w * 0.06,
+        cx - waistHalfW * 0.40,
+        waistY + w * 0.08,
         cx - bodyBottomHalfW * 0.22,
-        bodyBottomY - w * 0.22,
-        cx - bodyBottomHalfW * 0.25,
         bodyBottomY - w * 0.04,
       )
       ..close();
+
     canvas.drawPath(
-      highlightPath,
+      trunkHighlight,
       Paint()
         ..shader = LinearGradient(
           colors: [
             Colors.white.withOpacity(0.55),
-            Colors.white.withOpacity(0.15),
+            Colors.white.withOpacity(0.12),
             Colors.transparent,
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-        ).createShader(bodyRect),
+        ).createShader(trunkRect),
     );
 
-    // 5. Distinct symbol and readable token number on the body (§10)
-    final double symbolY = neckY + (bodyBottomY - neckY) * 0.32;
-    final double numberY = neckY + (bodyBottomY - neckY) * 0.68;
+    // Color-blind symbol on the foot/waist (§1: color-blind symbol on collar or foot)
+    final double symbolY = waistY + (bodyBottomY - waistY) * 0.40;
+    _drawEmblem(canvas, Offset(cx, symbolY), w * 0.20);
 
-    if (number == 0) {
-      // Pin avatar: centered gold emblem
-      _drawRoyalCrown(canvas, Offset(cx, (neckY + bodyBottomY) / 2), w * 0.34, goldCollar);
-    } else if (isHome) {
-      // Reached center home: gold 5-point victory star
-      final starCenter = Offset(cx, (neckY + bodyBottomY) / 2);
-      _star(canvas, starCenter, w * 0.22, Paint()..color = goldCollar);
-      _star(canvas, starCenter, w * 0.14, Paint()..color = Colors.white.withOpacity(0.92));
-    } else {
-      // Shape emblem + readable number
-      _drawEmblem(canvas, Offset(cx, symbolY), w * 0.22);
-      _drawNumber(canvas, Offset(cx, numberY), '$number', w);
-    }
-
-    // 6. Thin gold collar ring at the neck (§10)
+    // 5. Short narrow neck with a thin gold collar ring (§1)
     final collarRect = Rect.fromCenter(
       center: Offset(cx, neckY),
-      width: neckHalfW * 2.4,
+      width: neckHalfW * 2.3,
       height: w * 0.075,
     );
     final collarPaint = Paint()
@@ -423,6 +446,7 @@ class _GemPawnPainter extends CustomPainter {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ).createShader(collarRect);
+
     canvas.drawRRect(
       RRect.fromRectAndRadius(collarRect, Radius.circular(w * 0.035)),
       collarPaint,
@@ -430,120 +454,102 @@ class _GemPawnPainter extends CustomPainter {
     canvas.drawRRect(
       RRect.fromRectAndRadius(collarRect, Radius.circular(w * 0.035)),
       Paint()
-        ..color = Colors.white.withOpacity(0.70)
+        ..color = Colors.white.withOpacity(0.85)
         ..style = PaintingStyle.stroke
         ..strokeWidth = math.max(0.8, w * 0.016),
     );
 
-    // 7. Faceted gem on top (§10)
-    // The gem rises ~40-50% of cell width above cell (neckY up to topY)
-    final double gemTopY = -w * 0.42;
-    final double gemCenterY = (neckY + gemTopY) / 2;
-    final double gemW = w * 0.38;
-    final double gemH = (neckY - gemTopY);
+    // 6. Large glossy round head (§1):
+    // Diameter ~75% of cell width (headRadius = 0.375 * w)
+    // Head rises above its cell by at most ~20 to 25% of a cell (top at ~ -0.22 * w)
+    final double headRadius = w * 0.375;
+    final double headCy = neckY - headRadius * 0.60; // head sits cleanly on the collar
+    final Offset headCenter = Offset(cx, headCy);
+    final Rect headRect = Rect.fromCircle(center: headCenter, radius: headRadius);
 
-    _drawFacetedGem(
-      canvas: canvas,
-      center: Offset(cx, gemCenterY),
-      width: gemW,
-      height: gemH,
-      primary: primary,
-      dark: dark,
-      glow: glow,
-      highlight: highlight,
-    );
-  }
-
-  /// Brilliant faceted gem drawn on top of the pawn (§10).
-  void _drawFacetedGem({
-    required Canvas canvas,
-    required Offset center,
-    required double width,
-    required double height,
-    required Color primary,
-    required Color dark,
-    required Color glow,
-    required Color highlight,
-  }) {
-    final double cx = center.dx;
-    final double top = center.dy - height / 2;
-    final double bottom = center.dy + height / 2;
-    final double halfW = width / 2;
-    final double midY = center.dy - height * 0.08;
-
-    // Gem faceted polygon vertices:
-    // Top table facet: flat top edge
-    final tableP1 = Offset(cx - halfW * 0.48, top);
-    final tableP2 = Offset(cx + halfW * 0.48, top);
-    // Outer side corners at girdle (midY)
-    final leftCorner = Offset(cx - halfW, midY);
-    final rightCorner = Offset(cx + halfW, midY);
-    // Upper facet midpoints
-    final upperLeft = Offset(cx - halfW * 0.65, top + (midY - top) * 0.45);
-    final upperRight = Offset(cx + halfW * 0.65, top + (midY - top) * 0.45);
-    // Bottom culet / point meeting the collar
-    final bottomPoint = Offset(cx, bottom);
-
-
-    // Draw individual facets with varying luminance for real 3D crystal depth:
-    void drawFacet(List<Offset> points, Color col, [double opacity = 1.0]) {
-      final p = Path()..addPolygon(points, true);
-      canvas.drawPath(p, Paint()..color = col.withOpacity(opacity));
-      canvas.drawPath(
-        p,
-        Paint()
-          ..color = Colors.white.withOpacity(0.38)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.75,
-      );
-    }
-
-    // 1. Lower facets (culet to girdle)
-    drawFacet([bottomPoint, leftCorner, Offset(cx - halfW * 0.25, midY)], dark.withOpacity(0.95));
-    drawFacet([bottomPoint, Offset(cx - halfW * 0.25, midY), Offset(cx + halfW * 0.25, midY)], primary);
-    drawFacet([bottomPoint, Offset(cx + halfW * 0.25, midY), rightCorner], dark);
-
-    // 2. Crown side facets (girdle to table)
-    drawFacet([leftCorner, upperLeft, tableP1, Offset(cx - halfW * 0.25, midY)], highlight.withOpacity(0.90));
-    drawFacet([upperLeft, tableP1, tableP2, upperRight], glow);
-    drawFacet([tableP2, upperRight, rightCorner, Offset(cx + halfW * 0.25, midY)], primary);
-    drawFacet([Offset(cx - halfW * 0.25, midY), tableP1, tableP2, Offset(cx + halfW * 0.25, midY)], highlight);
-
-    // 3. Top table facet (hexagonal / trapezoidal gleaming table)
-    final tablePath = Path()
-      ..moveTo(tableP1.dx, tableP1.dy)
-      ..lineTo(tableP2.dx, tableP2.dy)
-      ..lineTo(upperRight.dx * 0.85 + cx * 0.15, midY * 0.55 + top * 0.45)
-      ..lineTo(upperLeft.dx * 0.85 + cx * 0.15, midY * 0.55 + top * 0.45)
-      ..close();
-    canvas.drawPath(
-      tablePath,
+    // Soft drop shadow cast by head onto neck/body
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(cx, neckY + w * 0.04),
+        width: headRadius * 1.5,
+        height: w * 0.08,
+      ),
       Paint()
-        ..shader = LinearGradient(
-          colors: [Colors.white.withOpacity(0.95), highlight],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ).createShader(Rect.fromLTRB(tableP1.dx, top, tableP2.dx, midY)),
+        ..color = Colors.black.withOpacity(0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
     );
-    canvas.drawPath(
-      tablePath,
+
+    // Head 3D glossy orb radial gradient (§1: strong specular, bright rim)
+    final headPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          highlight,
+          glow,
+          primary,
+          dark,
+          Color.alphaBlend(Colors.black.withOpacity(0.35), dark),
+        ],
+        stops: const [0.0, 0.22, 0.52, 0.85, 1.0],
+        center: const Alignment(-0.35, -0.40),
+        radius: 1.05,
+      ).createShader(headRect);
+    canvas.drawCircle(headCenter, headRadius, headPaint);
+
+    // Thin dark outline on head (§1)
+    canvas.drawCircle(
+      headCenter,
+      headRadius,
       Paint()
-        ..color = Colors.white
+        ..color = Colors.black.withOpacity(0.45)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.9,
+    );
+
+    // Bright rim highlight (§1: a bright rim)
+    canvas.drawCircle(
+      headCenter,
+      headRadius - 0.5,
+      Paint()
+        ..color = Colors.white.withOpacity(0.55)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0,
     );
 
-    // 4. Brilliant specular glint on the top-left facet corner
-    canvas.drawCircle(
-      tableP1 + const Offset(1.5, 2.0),
-      math.max(1.8, width * 0.05),
+    // Strong specular highlight on the head (§1)
+    final specularCenter = Offset(cx - headRadius * 0.34, headCy - headRadius * 0.36);
+    final double specRx = headRadius * 0.32;
+    final double specRy = headRadius * 0.20;
+    canvas.save();
+    canvas.translate(specularCenter.dx, specularCenter.dy);
+    canvas.rotate(-math.pi / 5);
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset.zero, width: specRx * 2, height: specRy * 2),
       Paint()
-        ..color = Colors.white
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
+        ..shader = RadialGradient(
+          colors: [
+            Colors.white.withOpacity(0.95),
+            Colors.white.withOpacity(0.50),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.55, 1.0],
+        ).createShader(Rect.fromCenter(center: Offset.zero, width: specRx * 2, height: specRy * 2)),
     );
+    canvas.restore();
+
+    // 7. Token number printed large and centered on the head (§1)
+    if (number == 0) {
+      // Pin avatar: centered gold royal crown
+      _drawRoyalCrown(canvas, headCenter, headRadius * 1.05, goldCollar);
+    } else if (isHome) {
+      // Reached center home: gold victory star
+      _star(canvas, headCenter, headRadius * 0.65, Paint()..color = goldCollar);
+      _star(canvas, headCenter, headRadius * 0.40, Paint()..color = Colors.white.withOpacity(0.95));
+    } else {
+      _drawNumber(canvas, headCenter, '$number', w);
+    }
   }
 
-  /// Distinct shape per color so hue is never the only cue (§10).
+  /// Distinct shape per color for color-blind accessibility (§1).
   void _drawEmblem(Canvas canvas, Offset c, double size) {
     final Paint fill = Paint()..color = Colors.white.withOpacity(0.95);
     final Paint shadowP = Paint()..color = Colors.black.withOpacity(0.40);
@@ -626,8 +632,9 @@ class _GemPawnPainter extends CustomPainter {
     canvas.drawCircle(Offset(right * 0.96 + left * 0.04, top + h * 0.22), pearlR * 0.85, Paint()..color = Colors.white);
   }
 
+  /// Large readable token number printed centered on the head (§1).
   void _drawNumber(Canvas canvas, Offset centre, String value, double w) {
-    final double fs = math.max(9.0, w * 0.26);
+    final double fs = math.max(12.0, w * 0.38);
     final face = TextPainter(
       text: TextSpan(
         text: value,
@@ -638,7 +645,7 @@ class _GemPawnPainter extends CustomPainter {
           height: 1.0,
           shadows: const [
             Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(0, 1.5)),
-            Shadow(color: Colors.black45, blurRadius: 8),
+            Shadow(color: Colors.black54, blurRadius: 8),
           ],
         ),
       ),
@@ -668,7 +675,7 @@ class _GemPawnPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GemPawnPainter old) =>
+  bool shouldRepaint(covariant _CrownPawnPainter old) =>
       old.color != color ||
       old.themePlayerColor != themePlayerColor ||
       old.themeMode != themeMode ||
@@ -680,7 +687,7 @@ class _GemPawnPainter extends CustomPainter {
       old.pulseProgress != pulseProgress;
 }
 
-/// Compact Gem Pawn avatar for player chips and cards.
+/// Compact Crown Pawn avatar for player chips and cards.
 class PinAvatar extends StatelessWidget {
   final LudoColor color;
   final double size;
@@ -701,7 +708,7 @@ class PinAvatar extends StatelessWidget {
       width: size,
       height: size,
       child: CustomPaint(
-        painter: _GemPawnPainter(
+        painter: _CrownPawnPainter(
           color: color,
           themePlayerColor: themePlayerColor,
           isHome: false,

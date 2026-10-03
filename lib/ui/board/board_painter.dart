@@ -86,25 +86,98 @@ class BoardPainter extends CustomPainter {
     );
   }
 
-  // --- Corner yards: 6x6 cells in each corner ----------------------------
+  // --- Corner yards: 6x6 cells in each corner (§3: 4.4x4.4 base panels in outer corners) ---
   void _drawYards(Canvas canvas, double tw, double th, double tu) {
     final totalW = tw * 15.0;
     final totalH = th * 15.0;
+
     void yard(double col, double row, LudoColor color) {
       final isActive = activeColor == color;
       final themeColor = _cfg.colorOf(color);
-      // Use BoardLayout so the yard rect matches the non-uniform grid
-      final left = BoardLayout.colLeft(col, totalW);
-      final top = BoardLayout.rowTop(row, totalH);
-      final right = BoardLayout.colLeft(col + 6, totalW);
-      final bottom = BoardLayout.rowTop(row + 6, totalH);
-      final outer = Rect.fromLTRB(left, top, right, bottom);
 
-      // Hard vivid fill — just the pure player color, no dark blending
-      final outerR =
-          RRect.fromRectAndRadius(outer, Radius.circular(tu * _cfg.yardBezelRadius));
+      // The full 6x6 corner zone
+      final zoneLeft = BoardLayout.colLeft(col, totalW);
+      final zoneTop = BoardLayout.rowTop(row, totalH);
+      final zoneRight = BoardLayout.colLeft(col + 6, totalW);
+      final zoneBottom = BoardLayout.rowTop(row + 6, totalH);
+      final zoneOuter = Rect.fromLTRB(zoneLeft, zoneTop, zoneRight, zoneBottom);
+      final zoneR = RRect.fromRectAndRadius(zoneOuter, Radius.circular(tu * _cfg.yardBezelRadius));
+
+      // Fill entire 6x6 zone with recessed neutral surface (§3: soft gold-tinted, subtle texture, clearly different from ivory track)
+      final neutralBg = LinearGradient(
+        colors: isDark
+            ? [const Color(0xFF131722), const Color(0xFF0D101A)]
+            : [const Color(0xFFEDE4D1), const Color(0xFFDFD4BE)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+      canvas.drawRRect(zoneR, Paint()..shader = neutralBg.createShader(zoneOuter));
+
+      // Subtle fine grid texture across neutral zone
+      final texturePaint = Paint()
+        ..color = (isDark ? const Color(0xFFD4AF37) : const Color(0xFFB8860B)).withOpacity(0.04)
+        ..strokeWidth = 1.0;
+      for (double step = tu * 0.75; step < tu * 6.0; step += tu * 0.75) {
+        canvas.drawLine(
+          Offset(zoneLeft + step, zoneTop),
+          Offset(zoneLeft + step, zoneBottom),
+          texturePaint,
+        );
+        canvas.drawLine(
+          Offset(zoneLeft, zoneTop + step),
+          Offset(zoneRight, zoneTop + step),
+          texturePaint,
+        );
+      }
+
+      // Outer 6x6 zone border (subtle gold line separating from track)
       canvas.drawRRect(
-        outerR,
+        zoneR,
+        Paint()
+          ..color = _cfg.boardInlayLine.withOpacity(0.40)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
+
+      // 4.4 x 4.4 cells colored base panel placed in the outer corner (§3)
+      // Panel dimensions: 4.4 * tw by 4.4 * th
+      final double panelW = 4.4 * tw;
+      final double panelH = 4.4 * th;
+      double panelLeft, panelTop;
+
+      switch (color) {
+        case LudoColor.red: // Top-left outer corner
+          panelLeft = zoneLeft + 0.2 * tw;
+          panelTop = zoneTop + 0.2 * th;
+          break;
+        case LudoColor.green: // Top-right outer corner
+          panelLeft = zoneRight - panelW - 0.2 * tw;
+          panelTop = zoneTop + 0.2 * th;
+          break;
+        case LudoColor.yellow: // Bottom-right outer corner
+          panelLeft = zoneRight - panelW - 0.2 * tw;
+          panelTop = zoneBottom - panelH - 0.2 * th;
+          break;
+        case LudoColor.blue: // Bottom-left outer corner
+          panelLeft = zoneLeft + 0.2 * tw;
+          panelTop = zoneBottom - panelH - 0.2 * th;
+          break;
+      }
+
+      final panelRect = Rect.fromLTWH(panelLeft, panelTop, panelW, panelH);
+      final panelR = RRect.fromRectAndRadius(panelRect, Radius.circular(tu * 0.38));
+
+      // Panel drop shadow onto neutral surface
+      canvas.drawRRect(
+        panelR.shift(const Offset(0, 2.5)),
+        Paint()
+          ..color = Colors.black.withOpacity(isDark ? 0.45 : 0.20)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+
+      // Vivid player color fill with rich gradient
+      canvas.drawRRect(
+        panelR,
         Paint()
           ..shader = LinearGradient(
             colors: [
@@ -113,81 +186,83 @@ class BoardPainter extends CustomPainter {
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-          ).createShader(outer),
+          ).createShader(panelRect),
       );
 
-      // Active-turn neon/gold rim
+      // Active player glow rim on base panel
       if (isActive) {
         canvas.drawRRect(
-          outerR,
+          panelR,
           Paint()
             ..color = Colors.white
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(3.0, tu * 0.14)
-            ..maskFilter = MaskFilter.blur(BlurStyle.normal, tu * 0.07),
+            ..strokeWidth = max(2.8, tu * 0.12)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, tu * 0.06),
         );
       }
-      canvas.drawRRect(
-        outerR,
-        Paint()
-          ..color = Colors.white.withOpacity(0.45)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
-      );
 
-      // Inner holding panel — dark neutral so coins pop
-      final panelLeft = left + (right - left) * 0.10;
-      final panelTop = top + (bottom - top) * 0.10;
-      final panelW = (right - left) * 0.80;
-      final panelH = (bottom - top) * 0.80;
-      final panel = Rect.fromLTWH(panelLeft, panelTop, panelW, panelH);
-      final panelR =
-          RRect.fromRectAndRadius(panel, Radius.circular(tu * 0.28));
+      // Thin gold border around base panel (§3)
       canvas.drawRRect(
         panelR,
+        Paint()
+          ..color = const Color(0xFFF2C14E).withOpacity(0.95)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4,
+      );
+
+      // Inner holding well plate (soft dark/cream contrast plate)
+      final innerWellPlate = Rect.fromLTWH(
+        panelLeft + panelW * 0.06,
+        panelTop + panelH * 0.06,
+        panelW * 0.88,
+        panelH * 0.88,
+      );
+      final innerPlateR = RRect.fromRectAndRadius(innerWellPlate, Radius.circular(tu * 0.26));
+      canvas.drawRRect(
+        innerPlateR,
         Paint()
           ..shader = LinearGradient(
             colors: [_cfg.yardPanelStart, _cfg.yardPanelEnd],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-          ).createShader(panel),
+          ).createShader(innerWellPlate),
       );
       canvas.drawRRect(
-        panelR,
+        innerPlateR,
         Paint()
-          ..color = Colors.white.withOpacity(0.50)
+          ..color = Colors.white.withOpacity(0.40)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
+          ..strokeWidth = 1.0,
       );
 
-      // Deep token wells (2x2 base slots) spaced evenly in base panel
-      final wellR = tu * 0.72;
+      // 4 slot rings for 2x2 grid (§4: each standing on a slot ring)
+      final wellR = tu * 0.68;
       for (final slot in BoardCoordinates.baseSlots[color]!) {
         final c = slot.toOffsetXY(tw, th);
-        // Well recessed cavity
+        // Slot cavity
         canvas.drawCircle(
           c,
           wellR,
           Paint()..color = _cfg.tokenWellColor,
         );
-        // Well rim
+        // Golden slot ring (§4)
         canvas.drawCircle(
           c,
           wellR,
           Paint()
-            ..color = _cfg.tokenWellRim.withOpacity(0.90)
+            ..color = const Color(0xFFF2C14E).withOpacity(0.92)
             ..style = PaintingStyle.stroke
             ..strokeWidth = max(1.8, tu * 0.08),
         );
         if (isActive) {
           canvas.drawCircle(
             c,
-            wellR + 2.5,
+            wellR + 2.0,
             Paint()
-              ..color = Colors.white.withOpacity(0.60)
+              ..color = Colors.white.withOpacity(0.65)
               ..style = PaintingStyle.stroke
-              ..strokeWidth = 2.0
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+              ..strokeWidth = 1.8
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
           );
         }
       }
@@ -279,10 +354,11 @@ class BoardPainter extends CustomPainter {
             ).createShader(rect),
         );
 
+        final chevronCenter = Offset(rect.center.dx, rect.top + rect.height * 0.35);
         _chevron(
           canvas,
-          rect.center,
-          tu * 0.22,
+          chevronCenter,
+          tu * 0.18,
           Colors.white.withOpacity(0.90),
           color,
         );
@@ -442,17 +518,20 @@ class BoardPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2,
       );
+      // Marker in upper 55% of cell (§2) so pawns standing in cell below never hide them
+      final iconCenter = Offset(c.dx, rect.top + rect.height * 0.35);
+
       _star(
         canvas,
-        c + const Offset(0, 1.0),
-        tu * 0.38,
+        iconCenter + const Offset(0, 1.0),
+        tu * 0.30,
         Paint()..color = _cfg.safeStarDeep.withOpacity(0.8),
         fill: true,
       );
       _star(
         canvas,
-        c,
-        tu * 0.36,
+        iconCenter,
+        tu * 0.28,
         Paint()..color = _cfg.safeStarColor,
         fill: true,
       );
@@ -496,17 +575,19 @@ class BoardPainter extends CustomPainter {
             end: Alignment.bottomCenter,
           ).createShader(rect),
       );
+      // Marker in upper 55% of cell (§2)
+      final iconCenter = Offset(c.dx, rect.top + rect.height * 0.35);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromCenter(center: c, width: tu * 0.76, height: tu * 0.76),
-          Radius.circular(tu * 0.18),
+          Rect.fromCenter(center: iconCenter, width: tu * 0.62, height: tu * 0.62),
+          Radius.circular(tu * 0.15),
         ),
         Paint()
           ..color = Colors.white.withOpacity(0.92)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4,
+          ..strokeWidth = 1.3,
       );
-      _arrow(canvas, c, tu * 0.32, Colors.white, i);
+      _arrow(canvas, iconCenter, tu * 0.26, Colors.white, i);
     }
   }
 

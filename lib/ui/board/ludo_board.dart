@@ -481,16 +481,15 @@ class _LudoBoardState extends State<LudoBoard>
             double row, col, lift, squash;
             double scale = 1.0;
             if (isBaseExit) {
-              // Quick pop onto the start square with overshoot.
+              // Quick pop onto the start square with smooth scale from base (1.5x) down to path size (1.0x) (§4)
               final a = _animStartPos!;
               final b = _waypoints.first;
               row = a.row + (b.row - a.row) * t;
               col = a.col + (b.col - a.col) * t;
               lift = sin(pi * t.clamp(0.0, 1.0)) * 0.6;
               squash = 0.0;
-              scale = t < 0.65
-                  ? 0.55 + 0.75 * (t / 0.65)
-                  : 1.30 - 0.30 * ((t - 0.65) / 0.35);
+              // Smooth scale from 1.5x (base token size) down to 1.0x (path size)
+              scale = 1.5 - 0.5 * t;
             } else {
               final double v = (t * n).clamp(0.0, n - 0.0001);
               final int seg = v.floor().clamp(0, n - 1);
@@ -553,7 +552,9 @@ class _LudoBoardState extends State<LudoBoard>
                 final double hop = sin(pi * t) * tu * 0.6;
                 final Offset c =
                     Offset((col + 0.5) * tw, (row + 0.5) * th - hop);
-                final double s = tokenSize * 0.9;
+                // Captured token scales back up from path size (1.0x) to base size (1.5x) as it returns (§4)
+                final double scale = 1.0 + 0.5 * t;
+                final double s = tokenSize;
                 return Stack(
                   children: [
                     Positioned(
@@ -561,15 +562,18 @@ class _LudoBoardState extends State<LudoBoard>
                       top: c.dy - s / 2,
                       width: s,
                       height: s,
-                      child: Opacity(
-                        opacity: 1.0 - t * 0.15,
-                        child: TokenWidget(
-                          token: Token(
-                              id: f.tokenId, color: f.color, step: 10),
-                          size: s,
-                          themeMode: widget.themeMode,
-                          themePlayerColor: themeColor,
-                          animLift: sin(pi * t) * 0.7,
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Opacity(
+                          opacity: 1.0 - t * 0.15,
+                          child: TokenWidget(
+                            token: Token(
+                                id: f.tokenId, color: f.color, step: 10),
+                            size: s,
+                            themeMode: widget.themeMode,
+                            themePlayerColor: themeColor,
+                            animLift: sin(pi * t) * 0.7,
+                          ),
                         ),
                       ),
                     ),
@@ -814,10 +818,16 @@ class _LudoBoardState extends State<LudoBoard>
       );
     }
 
-    add(LudoColor.red, 3.0, 0.55);
-    add(LudoColor.green, 12.0, 0.55);
-    add(LudoColor.yellow, 12.0, 14.45);
-    add(LudoColor.blue, 3.0, 14.45);
+    // Base label pills sit on the panel edge with a clear gap (~8 dp / 0.4 cells)
+    // from token slots (§3).
+    // Red slots at rows 1.4 & 3.4 -> label at cx=2.4, cy=0.48
+    // Green slots at rows 1.4 & 3.4 -> label at cx=12.6, cy=0.48
+    // Yellow slots at rows 11.6 & 13.6 -> label at cx=12.6, cy=14.52
+    // Blue slots at rows 11.6 & 13.6 -> label at cx=2.4, cy=14.52
+    add(LudoColor.red, 2.4, 0.48);
+    add(LudoColor.green, 12.6, 0.48);
+    add(LudoColor.yellow, 12.6, 14.52);
+    add(LudoColor.blue, 2.4, 14.52);
     return widgets;
   }
 
@@ -916,7 +926,8 @@ class _LudoBoardState extends State<LudoBoard>
         double displaySize;
         Offset offset = Offset.zero;
         if (isBaseBucket) {
-          displaySize = min(tokenSize, baseTokenSize);
+          // Tokens in a base are ~1.5x the size of path tokens (§4)
+          displaySize = baseTokenSize;
         } else if (isHomeBucket) {
           displaySize = tokenSize * 0.70;
           const dx = [0, -1, 1, 0];
@@ -926,16 +937,16 @@ class _LudoBoardState extends State<LudoBoard>
         } else if (count == 1) {
           displaySize = tokenSize;
         } else if (count == 2) {
-          // Two tokens side by side at ~65% scale (§10)
-          displaySize = tokenSize * 0.65;
-          offset = Offset((i == 0 ? -1 : 1) * tw * 0.18, 0);
+          // Re-tuned shared cells (§5): 2 tokens side by side at ~70% scale
+          displaySize = tokenSize * 0.70;
+          offset = Offset((i == 0 ? -1 : 1) * tw * 0.17, 0);
         } else {
-          // 3-4 tokens in a tidy fan at ~50% scale (§10)
-          displaySize = tokenSize * 0.50;
+          // Re-tuned shared cells (§5): 3 to 4 tokens in a tidy cluster at ~55% scale
+          displaySize = tokenSize * 0.55;
           const dx = [-1, 1, -1, 1];
           const dy = [-1, -1, 1, 1];
           final k = i % 4;
-          offset = Offset(dx[k] * tw * 0.18, dy[k] * th * 0.18);
+          offset = Offset(dx[k] * tw * 0.16, dy[k] * th * 0.16);
         }
 
         final center = boardPoint.toOffsetXY(tw, th);
