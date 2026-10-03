@@ -339,6 +339,16 @@ class SettingsSheet extends ConsumerWidget {
               onChanged: (v) => update(settings.copyWith(autoMove: v)),
             ),
 
+            // --- Lucky Sixes ---
+            _tile(
+              title: 'Lucky sixes',
+              subtitle: 'Sixes come up a little more often, and never three '
+                  'times in a row. Same for all players.',
+              icon: Icons.auto_awesome_rounded,
+              value: settings.luckySixes,
+              onChanged: (v) => update(settings.copyWith(luckySixes: v)),
+            ),
+
             // --- Block Rule ---
             _tile(
               title: 'Block rule',

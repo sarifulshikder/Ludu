@@ -18,7 +18,10 @@ class ScriptedDice implements DiceService {
   ScriptedDice(this.script);
 
   @override
-  int roll() {
+  bool get luckySixes => false;
+
+  @override
+  int roll({int streak = 0, bool? luckySixesOverride}) {
     final val = script[_index % script.length];
     _index++;
     return val;

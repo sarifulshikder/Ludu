@@ -29,7 +29,7 @@ void main() {
           endAtFirstWinner: g % 5 == 0,
         );
         final controller = GameController(
-          diceService: DiceService(Random(rng.nextInt(1 << 32))),
+          diceService: DiceService(random: Random(rng.nextInt(1 << 32))),
           persistence: MemoryPersistence(),
           settings: settings,
         );

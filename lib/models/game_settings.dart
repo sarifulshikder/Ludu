@@ -125,6 +125,10 @@ class GameSettings {
   /// the toggle is reserved for a future ambient layer).
   final bool backgroundMusic;
 
+  /// Lucky Sixes mode: P(6) ≈ 22 %, three sixes in a row can never happen.
+  /// Default ON. The same rule applies to every player equally.
+  final bool luckySixes;
+
   const GameSettings({
     this.autoMove = true,
     this.blockRule = false,
@@ -138,6 +142,7 @@ class GameSettings {
     this.isDark = false,
     this.soundPack = SoundPack.wood,
     this.backgroundMusic = false,
+    this.luckySixes = true,
   });
 
   /// Duration multiplier for hop/dice animations (1.0 normal, 0.55 fast).
@@ -156,6 +161,7 @@ class GameSettings {
     bool? isDark,
     SoundPack? soundPack,
     bool? backgroundMusic,
+    bool? luckySixes,
   }) {
     return GameSettings(
       autoMove: autoMove ?? this.autoMove,
@@ -170,6 +176,7 @@ class GameSettings {
       isDark: isDark ?? this.isDark,
       soundPack: soundPack ?? this.soundPack,
       backgroundMusic: backgroundMusic ?? this.backgroundMusic,
+      luckySixes: luckySixes ?? this.luckySixes,
     );
   }
 
@@ -186,6 +193,7 @@ class GameSettings {
         'isDark': isDark,
         'soundPack': soundPack.name,
         'backgroundMusic': backgroundMusic,
+        'luckySixes': luckySixes,
       };
 
   factory GameSettings.fromJson(Map<String, dynamic> json) {
@@ -208,6 +216,7 @@ class GameSettings {
         orElse: () => SoundPack.wood,
       ),
       backgroundMusic: json['backgroundMusic'] as bool? ?? false,
+      luckySixes: json['luckySixes'] as bool? ?? true,
     );
   }
 
@@ -227,7 +236,8 @@ class GameSettings {
           appTheme == other.appTheme &&
           isDark == other.isDark &&
           soundPack == other.soundPack &&
-          backgroundMusic == other.backgroundMusic;
+          backgroundMusic == other.backgroundMusic &&
+          luckySixes == other.luckySixes;
 
   @override
   int get hashCode => Object.hash(
@@ -243,5 +253,6 @@ class GameSettings {
         isDark,
         soundPack,
         backgroundMusic,
+        luckySixes,
       );
 }

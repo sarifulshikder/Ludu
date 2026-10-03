@@ -32,8 +32,11 @@ class RulesScreen extends StatelessWidget {
         children: [
           r(
             'True randomness',
-            'One die, values 1–6, equal probability from a cryptographically '
-                'secure source. No weighting, no hidden help, no pity rolls.',
+            'One die, values 1–6, from a cryptographically secure source. '
+                'With Lucky sixes ON (default): 6 comes up about 22 % of the '
+                'time; 1–5 share the rest equally; three 6s in a row can never '
+                'happen. With Lucky sixes OFF: plain 1/6 per face. '
+                'No hidden help, no catch-up, same rule for every player.',
           ),
           r(
             'Seats & turn order',
@@ -127,6 +130,12 @@ class RulesScreen extends StatelessWidget {
         title: 'Settings',
         color: const Color(0xFFE9C46A),
         children: [
+          r(
+            'Lucky sixes',
+            'Sixes come up a little more often (about 22 % vs 17 %), and three '
+                'in a row can never happen. The same weighted draw applies to '
+                'every player equally — no hidden help. On by default.',
+          ),
           r(
             'Block rule (Classic)',
             'When on, a stack of 2+ same-color tokens on a non-safe square is protected '

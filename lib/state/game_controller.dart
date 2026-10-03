@@ -159,7 +159,10 @@ class GameController extends StateNotifier<GameState> {
     if (!state.canRollDice) return state.currentDiceRoll ?? 1;
 
     AudioService.playDiceRoll();
-    final roll = _diceService.roll();
+    final roll = _diceService.roll(
+      streak: state.consecutiveSixes,
+      luckySixesOverride: settings.luckySixes,
+    );
     if (roll == 6) {
       AudioService.playSix();
     }
